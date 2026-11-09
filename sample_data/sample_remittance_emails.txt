@@ -1,0 +1,7 @@
+FROM: ap-remittance@northstarlogistics.example.com
+SUBJECT: Remittance Advice - ACH Batch ACH-BLIND-44109 ($18,414.00)
+Body: Dear Vendor AR Team, NorthStar Logistics Corp has initiated an ACH payment of $18,414.00 (Ref ACH-BLIND-44109) settling invoices INV-2026-008 ($11,200) and INV-2026-009 ($7,600) less 2% early pay discount and $10.00 wire fee.
+---
+FROM: treasury@medcore.example.com
+SUBJECT: RTP Remittance RTP-7741902 ($17,250.00)
+Body: Payment for INV-2026-005 and INV-2026-006 applying Credit Memo CM-501 ($800) and deducting DMG CRATES 450.00 due to transit damage on pallet #4.

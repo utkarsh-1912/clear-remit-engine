@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>STMT-20261110-001</MsgId>
+      <CreDtTm>2026-11-10T08:00:00Z</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>OPERATING-USD-001</Id>
+      <CreDtTm>2026-11-10T08:00:00Z</CreDtTm>
+      <Acct>
+        <Id>
+          <Othr>
+            <Id>88001928371</Id>
+          </Othr>
+        </Id>
+        <Ccy>USD</Ccy>
+      </Acct>
+
+      <!-- TX-101: Multi-invoice slash range + 2% Early Pay Discount -->
+      <Ntry>
+        <NtryRef>TX-101</NtryRef>
+        <Amt Ccy="USD">28910.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-11-10</Dt></BookgDt>
+        <AcctSvcrRef>FEDNOW-9981201</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>FEDNOW_INSTANT</Cd></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>Apex Retail Group Inc</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>PMT INV-2026-001/002/003 LESS 2% EARLY PAY DISC</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- TX-102: Multi-invoice + Credit Memo CM-501 + Unauthorized Damaged Goods Short-Pay ($450) -->
+      <Ntry>
+        <NtryRef>TX-102</NtryRef>
+        <Amt Ccy="USD">17250.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-11-10</Dt></BookgDt>
+        <AcctSvcrRef>RTP-7741902</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>RTP_REALTIME</Cd></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>MedCore Hospital Supply LLC</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>SETTLEMENT INV-2026-005 INV-2026-006 APPLY CM-501 LESS DMG CRATES 450.00</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- TX-103: Cross-Border Payment with 10% Statutory TDS Withholding + $25 SWIFT Correspondent Wire Fee -->
+      <Ntry>
+        <NtryRef>TX-103</NtryRef>
+        <Amt Ccy="USD">21575.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-11-10</Dt></BookgDt>
+        <AcctSvcrRef>SWIFT-MT103-88310</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>SWIFT_CROSS_BORDER</Cd></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>Infosys Bharat Digital Pvt Ltd</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>ANNUAL SAAS SUB INV-2026-007 LESS 10% TDS AT SOURCE AND 25.00 SWIFT FEE</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- TX-104: BLIND WIRE (Zero Invoice IDs in Narrative!) Solved via Constrained Subset-Sum -->
+      <Ntry>
+        <NtryRef>TX-104</NtryRef>
+        <Amt Ccy="USD">18414.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-11-10</Dt></BookgDt>
+        <AcctSvcrRef>ACH-BLIND-44109</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>ACH_CCD_BATCH</Cd></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>NorthStar Logistics Corp</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>ACH CORP TRADE PAYOUT NORTHSTAR TREASURY BATCH 1110</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- TX-105: Structured ISO 20022 <Strd> Block with Authorized Discount + Unapproved Penalty Short-Pay -->
+      <Ntry>
+        <NtryRef>TX-105</NtryRef>
+        <Amt Ccy="USD">14480.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-11-10</Dt></BookgDt>
+        <AcctSvcrRef>SEPA-STRD-55901</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>ISO20022_STRUCTURED</Cd></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>Vanguard Industrial GmbH</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <RfrdDocInf>
+                  <Tp><CdOrPrtry><Cd>CINV</Cd></CdOrPrtry></Tp>
+                  <Nb>INV-2026-012</Nb>
+                </RfrdDocInf>
+                <RfrdDocAmt>
+                  <DuePyblAmt Ccy="USD">15000.00</DuePyblAmt>
+                  <DscntApldAmt Ccy="USD">300.00</DscntApldAmt>
+                  <AdjstmntAmtAndRsn>
+                    <Amt Ccy="USD">220.00</Amt>
+                    <AddtlInf>Late Delivery SLA Deduction</AddtlInf>
+                  </AdjstmntAmtAndRsn>
+                  <RmtdAmt Ccy="USD">14480.00</RmtdAmt>
+                </RfrdDocAmt>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- TX-106: Clean 1-to-1 Exact Invoice Match -->
+      <Ntry>
+        <NtryRef>TX-106</NtryRef>
+        <Amt Ccy="USD">6400.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-11-10</Dt></BookgDt>
+        <AcctSvcrRef>FEDNOW-6612390</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>FEDNOW_INSTANT</Cd></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>Horizon Cloud Systems Inc</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>PAYMENT FOR INVOICE INV-2026-013 THANK YOU</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

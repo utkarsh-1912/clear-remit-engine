@@ -1,0 +1,3 @@
+memo_id,customer_id,customer_name,amount,reason,related_invoice_id,currency
+CM-501,CUST-MED,MedCore Hospital Supply LLC,800.00,Q3 Volume Rebate Credit Note,INV-2026-005,USD
+CM-502,CUST-APEX,Apex Retail Group Inc,350.00,Returned Packaging Allowance,INV-2026-004,USD
