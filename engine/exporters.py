@@ -4,11 +4,28 @@ from __future__ import annotations
 import csv
 import io
 import xml.sax.saxutils as saxutils
+from dataclasses import dataclass
 from typing import List
-from engine.models import ReconciliationProposal
+from engine.models import JournalEntryLine, ReconciliationProposal
 
 
-def export_quickbooks_csv(proposals: List[ReconciliationProposal], booking_date: str = "2026-11-10") -> str:
+@dataclass
+class ExportJournal:
+    tx_id: str
+    booking_date: str
+    currency: str
+    matched_customer_name: str
+    explanation_summary: str
+    journal_entries: list[JournalEntryLine]
+
+
+def _csv_cell(value: str) -> str:
+    if value.startswith(("\t", "\r", "\n")) or value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+def export_quickbooks_csv(proposals: List[ReconciliationProposal | ExportJournal], booking_date: str | None = None) -> str:
     """Generates QuickBooks Online / Desktop Journal Entry Import CSV."""
     output = io.StringIO()
     writer = csv.writer(output)
@@ -32,20 +49,25 @@ def export_quickbooks_csv(proposals: List[ReconciliationProposal], booking_date:
             writer.writerow(
                 [
                     j_no,
-                    booking_date,
-                    line.account_code,
-                    line.account_name,
+                    booking_date or prop.booking_date,
+                    _csv_cell(line.account_code),
+                    _csv_cell(line.account_name),
                     f"{line.debit:.2f}" if line.debit > 0 else "",
                     f"{line.credit:.2f}" if line.credit > 0 else "",
-                    line.memo,
-                    line.entity_name,
-                    line.invoice_ref or "",
+                    _csv_cell(line.memo),
+                    _csv_cell(line.entity_name),
+                    _csv_cell(line.invoice_ref or ""),
                 ]
             )
     return output.getvalue()
 
 
-def export_xero_csv(proposals: List[ReconciliationProposal], booking_date: str = "2026-11-10") -> str:
+def export_xero_csv(
+    proposals: List[ReconciliationProposal | ExportJournal],
+    booking_date: str | None = None,
+    *,
+    tax_rate: str = "",
+) -> str:
     """Generates Xero Manual Journal / Split Reconciliation CSV."""
     output = io.StringIO()
     writer = csv.writer(output)
@@ -63,26 +85,32 @@ def export_xero_csv(proposals: List[ReconciliationProposal], booking_date: str =
     )
 
     for prop in proposals:
-        narration = f"ISO20022 Auto-Recon {prop.tx_id} ({prop.matched_customer_name})"
+        narration = f"Reconciliation {prop.tx_id} ({prop.matched_customer_name})"
         for line in prop.journal_entries:
             # Xero uses positive amounts for Debits and negative amounts for Credits
             signed_amt = line.debit if line.debit > 0 else -line.credit
             writer.writerow(
                 [
                     narration,
-                    booking_date,
-                    line.memo,
-                    line.account_code,
-                    "Tax Exempt (0%)",
+                    booking_date or prop.booking_date,
+                    _csv_cell(line.memo),
+                    _csv_cell(line.account_code),
+                    _csv_cell(tax_rate),
                     f"{signed_amt:.2f}",
-                    line.entity_name,
-                    line.invoice_ref or prop.tx_id,
+                    _csv_cell(line.entity_name),
+                    _csv_cell(line.invoice_ref or prop.tx_id),
                 ]
             )
     return output.getvalue()
 
 
-def export_netsuite_csv(proposals: List[ReconciliationProposal], booking_date: str = "2026-11-10") -> str:
+def export_netsuite_csv(
+    proposals: List[ReconciliationProposal | ExportJournal],
+    booking_date: str | None = None,
+    *,
+    subsidiary: str = "",
+    department: str = "",
+) -> str:
     """Generates Oracle NetSuite Multi-Line Journal Entry Import CSV."""
     output = io.StringIO()
     writer = csv.writer(output)
@@ -108,27 +136,26 @@ def export_netsuite_csv(proposals: List[ReconciliationProposal], booking_date: s
             writer.writerow(
                 [
                     ext_id,
-                    booking_date,
-                    "Parent Company (Consolidated)",
-                    "USD",
-                    line.account_code,
-                    line.account_name,
+                    booking_date or prop.booking_date,
+                    _csv_cell(subsidiary),
+                    prop.currency,
+                    _csv_cell(line.account_code),
+                    _csv_cell(line.account_name),
                     f"{line.debit:.2f}",
                     f"{line.credit:.2f}",
-                    line.memo,
-                    line.entity_name,
-                    "Accounts Receivable",
+                    _csv_cell(line.memo),
+                    _csv_cell(line.entity_name),
+                    _csv_cell(department),
                 ]
             )
     return output.getvalue()
 
 
-def export_tally_xml(proposals: List[ReconciliationProposal], booking_date: str = "20261110") -> str:
+def export_tally_xml(proposals: List[ReconciliationProposal | ExportJournal], booking_date: str | None = None) -> str:
     """Generates Tally Prime / Tally.ERP 9 Receipt & Journal Voucher XML Envelope."""
     vouchers_xml = []
-    clean_date = booking_date.replace("-", "")
-
     for prop in proposals:
+        clean_date = saxutils.escape((booking_date or prop.booking_date).replace("-", ""))
         ledger_entries = []
         for line in prop.journal_entries:
             # In Tally XML, Debit is ISDEEMEDPOSITIVE=Yes with negative amount; Credit is ISDEEMEDPOSITIVE=No with positive amount

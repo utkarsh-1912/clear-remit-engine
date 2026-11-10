@@ -32,29 +32,33 @@ def _match_customer_invoices(
     all_memos: List[CreditMemo],
 ) -> Tuple[str, str, List[OpenInvoice], List[CreditMemo]]:
     """Finds the customer's open invoices and credit memos via explicit invoice hints or fuzzy payer name."""
+    all_invoices = [inv for inv in all_invoices if inv.currency == tx.currency and inv.open_amount > 0]
+    all_memos = [memo for memo in all_memos if memo.currency == tx.currency]
     inv_by_id: Dict[str, OpenInvoice] = {inv.invoice_id.upper(): inv for inv in all_invoices}
 
-    # 1. Check if any referenced invoice ID directly identifies the customer
-    for ref_id in tx.hints.referenced_invoices:
-        matched_inv = inv_by_id.get(ref_id.upper())
-        if matched_inv:
-            cust_id = matched_inv.customer_id
-            cust_name = matched_inv.customer_name
-            cust_invs = [i for i in all_invoices if i.customer_id == cust_id]
-            cust_memos = [m for m in all_memos if m.customer_id == cust_id]
-            return cust_id, cust_name, cust_invs, cust_memos
+    hinted = {inv_by_id[ref.upper()].customer_id: inv_by_id[ref.upper()].customer_name
+              for ref in tx.hints.referenced_invoices if ref.upper() in inv_by_id}
+    if len(hinted) > 1:
+        return "UNKNOWN", tx.payer_name, [], []
+    if hinted:
+        cust_id, cust_name = next(iter(hinted.items()))
+        return cust_id, cust_name, [i for i in all_invoices if i.customer_id == cust_id], [
+            m for m in all_memos if m.customer_id == cust_id
+        ]
 
     # 2. Match via normalized payer name
     payer_norm = _norm_name(tx.payer_name)
     if payer_norm:
+        customers = {}
         for inv in all_invoices:
             cust_norm = _norm_name(inv.customer_name)
             if cust_norm and (payer_norm in cust_norm or cust_norm in payer_norm):
-                cust_id = inv.customer_id
-                cust_name = inv.customer_name
-                cust_invs = [i for i in all_invoices if i.customer_id == cust_id]
-                cust_memos = [m for m in all_memos if m.customer_id == cust_id]
-                return cust_id, cust_name, cust_invs, cust_memos
+                customers[inv.customer_id] = inv.customer_name
+        if len(customers) == 1:
+            cust_id, cust_name = next(iter(customers.items()))
+            cust_invs = [i for i in all_invoices if i.customer_id == cust_id]
+            cust_memos = [m for m in all_memos if m.customer_id == cust_id]
+            return cust_id, cust_name, cust_invs, cust_memos
 
     return "UNKNOWN", tx.payer_name, [], []
 
@@ -147,7 +151,7 @@ def _build_journal_entries(
                 account_name="Accounts Receivable - Trade",
                 debit=Decimal("0.00"),
                 credit=_q2(alloc.gross_amount),
-                memo=f"Settle Open Invoice {alloc.invoice_id} (Net Cash: ${alloc.net_settled:,.2f})",
+                memo=f"Settle Open Invoice {alloc.invoice_id} (Net Cash: {tx.currency} {alloc.net_settled:,.2f})",
                 entity_name=customer_name,
                 invoice_ref=alloc.invoice_id,
             )
@@ -169,22 +173,20 @@ def _generate_dispute_draft(
     total_disputed = sum((d.amount for d in unauthorized_deductions), Decimal("0.00"))
     inv_list = ", ".join(a.invoice_id for a in allocations)
     bullet_lines = "\n".join(
-        f"  - ${d.amount:,.2f}: {d.description}"
+        f"  - {tx.currency} {d.amount:,.2f}: {d.description}"
         + (f" (Invoice {d.related_invoice_id})" if d.related_invoice_id else "")
         for d in unauthorized_deductions
     )
 
     return (
-        f"SUBJECT: Action Required: Short-Pay Balance of ${total_disputed:,.2f} on Remittance {tx.bank_reference}\n\n"
+        f"SUBJECT: Short-pay balance of {tx.currency} {total_disputed:,.2f} on remittance {tx.bank_reference}\n\n"
         f"Dear {customer_name} Accounts Payable Team,\n\n"
-        f"Thank you for your payment of ${tx.amount:,.2f} received on {tx.booking_date} via {tx.payment_rail} "
+        f"Thank you for your payment of {tx.currency} {tx.amount:,.2f} received on {tx.booking_date} via {tx.payment_rail} "
         f"(Ref: {tx.bank_reference}), which we have applied toward invoice(s): {inv_list}.\n\n"
-        f"During automated ISO 20022 reconciliation, our system flagged the following unapproved deduction(s) "
-        f"totaling ${total_disputed:,.2f}:\n"
+        f"Our reconciliation identified the following unapproved deductions totaling {tx.currency} {total_disputed:,.2f}:\n"
         f"{bullet_lines}\n\n"
-        f"Please provide supporting debit-memo documentation / quality-inspection photos within 5 business days, "
-        f"or remit the remaining balance of ${total_disputed:,.2f} via ACH/FedNow to clear the open dispute balance.\n\n"
-        f"Sincerely,\nAccounts Receivable & Treasury Automation"
+        f"Please send supporting documentation or remit the remaining balance of {tx.currency} {total_disputed:,.2f} "
+        f"using your existing payment instructions.\n\nSincerely,\nAccounts Receivable"
     )
 
 
@@ -199,12 +201,15 @@ def _solve_structured_iso20022(
         return None
 
     inv_map = {i.invoice_id.upper(): i for i in cust_invoices}
+    ref_ids = [ref.doc_number.upper() for ref in tx.hints.structured_refs]
+    if len(set(ref_ids)) != len(ref_ids) or any(ref not in inv_map for ref in ref_ids):
+        return None
     allocations: List[InvoiceMatchAllocation] = []
     deductions: List[DeductionLine] = []
 
     for sref in tx.hints.structured_refs:
-        inv = inv_map.get(sref.doc_number.upper())
-        gross = inv.open_amount if inv else (sref.invoiced_amount or Decimal("0.00"))
+        inv = inv_map[sref.doc_number.upper()]
+        gross = inv.open_amount
         disc = _q2(sref.discount_amount or Decimal("0.00"))
         tds = _q2(sref.tax_withheld_amount or Decimal("0.00"))
         adj = _q2(sref.adjustment_amount or Decimal("0.00"))
@@ -222,7 +227,7 @@ def _solve_structured_iso20022(
         )
 
         if disc > Decimal("0.00"):
-            max_allowed_disc = _q2(gross * (inv.eligible_discount_pct / Decimal("100"))) if inv else disc
+            max_allowed_disc = _q2(gross * (inv.eligible_discount_pct / Decimal("100")))
             is_auth = disc <= max_allowed_disc + Decimal("0.05")
             deductions.append(
                 DeductionLine(
@@ -273,11 +278,11 @@ def _solve_structured_iso20022(
     journals = _build_journal_entries(tx, cust_name, allocations, deductions, residual)
     dispute_draft = _generate_dispute_draft(tx, cust_name, unauthorized, allocations)
 
-    summary_parts = [f"Matched {len(allocations)} structured ISO 20022 invoice block(s) totaling ${total_gross:,.2f}."]
+    summary_parts = [f"Matched {len(allocations)} structured ISO 20022 invoice block(s) totaling {tx.currency} {total_gross:,.2f}."]
     if total_ded > Decimal("0.00"):
-        summary_parts.append(f"Identified ${total_ded:,.2f} in structured deductions/tax withholdings.")
+        summary_parts.append(f"Identified {tx.currency} {total_ded:,.2f} in structured deductions or withholding.")
     if unauthorized:
-        summary_parts.append(f"Flagged ${sum(d.amount for d in unauthorized):,.2f} unauthorized short-pay for dispute recovery.")
+        summary_parts.append(f"Flagged {tx.currency} {sum(d.amount for d in unauthorized):,.2f} in unapproved deductions.")
 
     return ReconciliationProposal(
         tx_id=tx.tx_id,
@@ -295,6 +300,8 @@ def _solve_structured_iso20022(
         journal_entries=journals,
         explanation_summary=" ".join(summary_parts),
         dispute_notice_draft=dispute_draft,
+        booking_date=tx.booking_date,
+        currency=tx.currency,
     )
 
 
@@ -386,6 +393,7 @@ def _evaluate_subset_candidate(
                 gl_account_name="Customer Credit Memos Applied",
                 is_authorized=True,
                 related_invoice_id=m.related_invoice_id,
+                credit_memo_id=m.memo_id,
             )
         )
 
@@ -393,7 +401,7 @@ def _evaluate_subset_candidate(
         deductions.append(
             DeductionLine(
                 deduction_type="BANK_WIRE_FEE",
-                description=f"Intermediary Bank / Wire Settlement Fee (${wire_fee:,.2f})",
+                description=f"Intermediary Bank / Wire Settlement Fee ({tx.currency} {wire_fee:,.2f})",
                 amount=wire_fee,
                 gl_account_code="6120",
                 gl_account_name="Bank & Wire Transfer Charges",
@@ -426,19 +434,19 @@ def _evaluate_subset_candidate(
     if wire_fee > Decimal("0.00") and tx.hints.claimed_wire_fee is None:
         confidence -= 1.5
 
-    inv_ids_str = " + ".join(f"{i.invoice_id} (${i.open_amount:,.2f})" for i in subset)
-    expl = [f"Solved exact cent-level match for {inv_ids_str} = ${gross_sum:,.2f} Gross."]
+    inv_ids_str = " + ".join(f"{i.invoice_id} ({tx.currency} {i.open_amount:,.2f})" for i in subset)
+    expl = [f"Proposed {inv_ids_str}, totaling {tx.currency} {gross_sum:,.2f} before deductions."]
     if total_disc > Decimal("0.00"):
-        expl.append(f"Less {disc_pct:g}% Early-Pay Discount (-${total_disc:,.2f}).")
+        expl.append(f"Less {disc_pct:g}% early-pay discount ({tx.currency} {total_disc:,.2f}).")
     if total_tds > Decimal("0.00"):
-        expl.append(f"Less {tds_pct:g}% Tax Withholding/TDS (-${total_tds:,.2f}).")
+        expl.append(f"Less {tds_pct:g}% withholding ({tx.currency} {total_tds:,.2f}).")
     if memo_sum > Decimal("0.00"):
-        expl.append(f"Less Credit Memo {', '.join(m.memo_id for m in applied_memos)} (-${memo_sum:,.2f}).")
+        expl.append(f"Less credit memo {', '.join(m.memo_id for m in applied_memos)} ({tx.currency} {memo_sum:,.2f}).")
     if claimed_short_pay > Decimal("0.00"):
-        expl.append(f"Less Unauthorized Short-Pay Claim (-${claimed_short_pay:,.2f}).")
+        expl.append(f"Less unapproved short-pay claim ({tx.currency} {claimed_short_pay:,.2f}).")
     if wire_fee > Decimal("0.00"):
-        expl.append(f"Less Intermediary Wire Fee (-${wire_fee:,.2f}).")
-    expl.append(f"Equals Net Deposit ${tx.amount:,.2f}.")
+        expl.append(f"Less intermediary wire fee ({tx.currency} {wire_fee:,.2f}).")
+    expl.append(f"Deposit received: {tx.currency} {tx.amount:,.2f}.")
 
     journals = _build_journal_entries(tx, cust_name, allocations, deductions, residual)
     dispute_draft = _generate_dispute_draft(tx, cust_name, unauthorized, allocations)
@@ -459,6 +467,8 @@ def _evaluate_subset_candidate(
         journal_entries=journals,
         explanation_summary=" ".join(expl),
         dispute_notice_draft=dispute_draft,
+        booking_date=tx.booking_date,
+        currency=tx.currency,
     )
 
 
@@ -484,9 +494,9 @@ def reconcile_transaction(
     # Stage 2: Hint-Guided Solver (when <Ustrd> references specific Invoice IDs)
     if tx.hints.referenced_invoices and cust_invoices:
         inv_map = {i.invoice_id.upper(): i for i in cust_invoices}
-        hinted_subset = tuple(
-            inv_map[ref.upper()] for ref in tx.hints.referenced_invoices if ref.upper() in inv_map
-        )
+        hinted_subset = tuple(inv_map[ref] for ref in dict.fromkeys(
+            ref.upper() for ref in tx.hints.referenced_invoices
+        ) if ref in inv_map)
         if hinted_subset:
             memo_map = {m.memo_id.upper(): m for m in cust_memos}
             hinted_memos = [
@@ -538,6 +548,7 @@ def reconcile_transaction(
 
     # Stage 3: Blind Constrained Subset-Sum & Deduction Solver
     # Even when the payer sends ZERO invoice numbers in the remittance text, test combinations of open invoices
+    checks = 0
     if cust_invoices:
         max_k = min(len(cust_invoices), config.max_subset_size)
         memo_options = [[]] + [[m] for m in cust_memos]
@@ -565,6 +576,9 @@ def reconcile_transaction(
                     for d_pct, t_pct, w_fee in itertools.product(
                         cust_disc_options, cust_tds_options, config.common_wire_fees
                     ):
+                        if checks >= config.max_candidate_checks:
+                            return _unmatched(tx, cust_id, cust_name, "Candidate search limit reached. Supply remittance references to narrow the match.")
+                        checks += 1
                         prop = _evaluate_subset_candidate(
                             tx=tx,
                             cust_id=cust_id,
@@ -580,7 +594,10 @@ def reconcile_transaction(
                         if prop is not None:
                             return prop
 
-    # Stage 4: Unmatched Suspense Fallback (Balanced Suspense Entry)
+    return _unmatched(tx, cust_id, cust_name, "No deterministic match found within the configured policies.")
+
+
+def _unmatched(tx: BankTransaction, cust_id: str, cust_name: str, explanation: str) -> ReconciliationProposal:
     suspense_journals = [
         JournalEntryLine(
             line_number=1,
@@ -616,8 +633,10 @@ def reconcile_transaction(
         allocations=[],
         deductions=[],
         journal_entries=suspense_journals,
-        explanation_summary="No deterministic subset match found within configured discount/tax/fee tolerances. Routed to Suspense Clearing.",
+        explanation_summary=explanation,
         dispute_notice_draft=None,
+        booking_date=tx.booking_date,
+        currency=tx.currency,
     )
 
 
@@ -641,7 +660,7 @@ def reconcile_batch(
         if prop.status in ("AUTO_RECONCILED", "ACTION_REQUIRED_SHORT_PAY"):
             settled_ids = {a.invoice_id.upper() for a in prop.allocations}
             remaining_invoices = [i for i in remaining_invoices if i.invoice_id.upper() not in settled_ids]
-            used_memo_descs = " ".join(d.description.upper() for d in prop.deductions if d.deduction_type == "CREDIT_MEMO")
-            remaining_memos = [m for m in remaining_memos if m.memo_id.upper() not in used_memo_descs]
+            used_memo_ids = {d.credit_memo_id for d in prop.deductions if d.credit_memo_id}
+            remaining_memos = [m for m in remaining_memos if m.memo_id not in used_memo_ids]
 
     return proposals

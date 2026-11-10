@@ -5,6 +5,7 @@ import csv
 import io
 import re
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 from engine.models import (
@@ -26,6 +27,13 @@ def _safe_decimal(val: Optional[str], default: str = "0.00") -> Decimal:
         return Decimal(cleaned).quantize(Decimal("0.01"))
     except InvalidOperation:
         return Decimal(default)
+
+
+def _ledger_amount(value: str | None, label: str) -> Decimal:
+    text = (value or "").strip()
+    if not re.fullmatch(r"-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2}0*)?", text):
+        raise ValueError(f"Missing or invalid {label}. Expected a number with at most two decimal places.")
+    return Decimal(text.replace(",", ""))
 
 
 def extract_unstructured_remittance_hints(raw_text: str) -> RemittanceHint:
@@ -166,8 +174,8 @@ def parse_iso20022_xml(xml_content: str) -> List[BankTransaction]:
             amt_nodes = _find_children(ntry, "Amt")
             amt_node = amt_nodes[0] if amt_nodes else None
 
-        amount = _safe_decimal(amt_node.text if amt_node is not None else "0.00")
-        currency = (amt_node.attrib.get("Ccy", "USD") if amt_node is not None else "USD").upper()
+        amount = _ledger_amount(amt_node.text if amt_node is not None else None, "ISO 20022 amount")
+        currency = (amt_node.attrib.get("Ccy", "") if amt_node is not None else "").upper()
 
         # Extract transaction ID / reference
         tx_id = (
@@ -187,10 +195,11 @@ def parse_iso20022_xml(xml_content: str) -> List[BankTransaction]:
         # Extract booking date
         booking_date = (
             _find_child_text(ntry, ["BookgDt", "Dt"])
+            or _find_child_text(ntry, ["BookgDt", "DtTm"])
             or _find_child_text(ntry, ["ValDt", "Dt"])
             or _find_child_text(ntry, ["IntrBkSttlmDt"])
-            or "2026-11-10"
-        )
+            or ""
+        ).split("T", 1)[0]
 
         # Extract Payer / Debtor Name
         payer_name = (
@@ -273,11 +282,13 @@ def parse_bank_csv(csv_content: str) -> List[BankTransaction]:
     transactions: List[BankTransaction] = []
     for idx, row in enumerate(reader, start=1):
         tx_id = (row.get("tx_id") or row.get("Transaction ID") or f"TX-CSV-{idx:03d}").strip()
-        booking_date = (row.get("booking_date") or row.get("Date") or "2026-11-10").strip()
+        booking_date = (row.get("booking_date") or row.get("Date") or "").strip()
         payer_name = (row.get("payer_name") or row.get("Payer") or row.get("Counterparty") or "Unknown").strip()
-        amount = _safe_decimal(row.get("amount") or row.get("Amount") or "0.00")
-        currency = (row.get("currency") or row.get("Currency") or "USD").strip().upper()
-        rail = (row.get("payment_rail") or row.get("Rail") or "ACH/FEDNOW").strip()
+        amount = _ledger_amount(row.get("amount") or row.get("Amount"), f"bank CSV amount at row {idx}")
+        if amount <= 0:
+            continue
+        currency = (row.get("currency") or row.get("Currency") or "").strip().upper()
+        rail = (row.get("payment_rail") or row.get("Rail") or "BANK_CSV").strip()
         bank_ref = (row.get("bank_reference") or row.get("Reference") or tx_id).strip()
         ustrd = (row.get("remittance_info") or row.get("Description") or row.get("Narrative") or "").strip()
 
@@ -307,6 +318,7 @@ def parse_mt940_statement(mt940_content: str) -> List[BankTransaction]:
     current_61: Optional[str] = None
     current_86_lines: List[str] = []
     tx_counter = 1
+    currency = ""
 
     def _flush_entry(line_61: str, lines_86: List[str], idx: int) -> Optional[BankTransaction]:
         # :61:2611101110C28910,00NTRFFEDNOW-9981201//TX-101
@@ -314,9 +326,9 @@ def parse_mt940_statement(mt940_content: str) -> List[BankTransaction]:
         if not m:
             return None
         yymmdd, cdt_dbt, amt_str, swift_code, refs = m.groups()
-        if cdt_dbt.endswith("D"):
+        if cdt_dbt in {"D", "RC"}:
             return None  # Skip debits
-        booking_date = f"20{yymmdd[0:2]}-{yymmdd[2:4]}-{yymmdd[4:6]}"
+        booking_date = datetime.strptime(yymmdd, "%y%m%d").date().isoformat()
         amount = _safe_decimal(amt_str.replace(",", "."))
         ref_parts = refs.split("//")
         bank_ref = ref_parts[0].strip() or f"MT940-{idx:03d}"
@@ -335,7 +347,7 @@ def parse_mt940_statement(mt940_content: str) -> List[BankTransaction]:
             booking_date=booking_date,
             payer_name=payer_name,
             amount=amount,
-            currency="USD",
+            currency=currency,
             payment_rail=f"MT940_{swift_code}",
             bank_reference=bank_ref,
             raw_remittance_unstructured=raw_86,
@@ -343,14 +355,19 @@ def parse_mt940_statement(mt940_content: str) -> List[BankTransaction]:
         )
 
     for line in lines:
-        if line.startswith(":61:"):
+        opening = re.match(r":60[FM]:[CD]\d{6}([A-Z]{3})", line)
+        if line.startswith((":61:", ":20:", ":62F:", ":62M:")) or opening:
             if current_61 is not None:
                 tx = _flush_entry(current_61, current_86_lines, tx_counter)
                 if tx:
                     transactions.append(tx)
                     tx_counter += 1
-            current_61 = line
+            current_61 = line if line.startswith(":61:") else None
             current_86_lines = []
+            if opening:
+                currency = opening[1]
+            elif line.startswith(":20:"):
+                currency = ""
         elif line.startswith(":86:") or (current_86_lines and not line.startswith(":")):
             current_86_lines.append(line)
 
@@ -373,16 +390,24 @@ def parse_bai2_statement(bai2_content: str) -> List[BankTransaction]:
     current_16: Optional[List[str]] = None
     current_88: List[str] = []
     tx_counter = 1
+    booking_date = ""
+    group_currency = ""
+    currency = ""
 
     def _flush_bai2(fields_16: List[str], lines_88: List[str], idx: int) -> Optional[BankTransaction]:
         # Example: 16,165,2891000,Z,FEDNOW-9981201,TX-101/
         if len(fields_16) < 3:
             return None
         type_code = fields_16[1].strip()
-        cents_str = re.sub(r"[^\d]", "", fields_16[2])
-        amount = (_safe_decimal(cents_str) / Decimal("100")).quantize(Decimal("0.01"))
+        if not type_code.isdigit() or not 100 <= int(type_code) < 400:
+            return None
+        cents_str = fields_16[2].strip()
+        if not cents_str.isascii() or not cents_str.isdigit():
+            raise ValueError(f"Invalid BAI2 credit amount at transaction {idx}.")
+        amount = Decimal(cents_str).scaleb(-2)
         bank_ref = fields_16[4].strip().rstrip("/") if len(fields_16) > 4 else f"BAI2-{idx:03d}"
-        tx_id = fields_16[5].strip().rstrip("/") if len(fields_16) > 5 else f"TX-BAI2-{idx:03d}"
+        tx_id = fields_16[5].strip().rstrip("/") if len(fields_16) > 5 else ""
+        tx_id = tx_id or f"TX-BAI2-{idx:03d}"
 
         remit_text = " ".join(lines_88).strip()
         payer_match = re.search(r"PAYER[:=]\s*([^\|;]+)", remit_text, re.IGNORECASE)
@@ -391,10 +416,10 @@ def parse_bai2_statement(bai2_content: str) -> List[BankTransaction]:
 
         return BankTransaction(
             tx_id=tx_id,
-            booking_date="2026-11-10",
+            booking_date=booking_date,
             payer_name=payer_name,
             amount=amount,
-            currency="USD",
+            currency=currency,
             payment_rail=f"BAI2_CODE_{type_code}",
             bank_reference=bank_ref,
             raw_remittance_unstructured=remit_text,
@@ -402,14 +427,22 @@ def parse_bai2_statement(bai2_content: str) -> List[BankTransaction]:
         )
 
     for line in lines:
-        if line.startswith("16,"):
+        if line.startswith(("02,", "03,", "16,", "49,", "98,")):
             if current_16 is not None:
                 tx = _flush_bai2(current_16, current_88, tx_counter)
                 if tx:
                     transactions.append(tx)
                     tx_counter += 1
-            current_16 = line.split(",")
+            fields = line.rstrip("/").split(",")
+            current_16 = fields if fields[0] == "16" else None
             current_88 = []
+            if fields[0] == "02":
+                as_of = fields[4] if len(fields) > 4 else ""
+                booking_date = datetime.strptime(as_of, "%y%m%d").date().isoformat() if as_of else ""
+                group_currency = fields[6] if len(fields) > 6 else ""
+                currency = group_currency
+            elif fields[0] == "03":
+                currency = (fields[2] if len(fields) > 2 else "") or group_currency
         elif line.startswith("88,") and current_16 is not None:
             current_88.append(line[3:].rstrip("/").strip())
 
@@ -423,20 +456,35 @@ def parse_bai2_statement(bai2_content: str) -> List[BankTransaction]:
 
 def detect_and_parse_statement(content: str, format_hint: str = "AUTO") -> List[BankTransaction]:
     """Auto-detects and parses ISO 20022 XML, SWIFT MT940, BAI2, or Bank CSV."""
-    stripped = content.lstrip()
+    stripped = content.lstrip("\ufeff \r\n\t")
     fmt = format_hint.upper()
-    if fmt == "ISO20022_XML" or stripped.startswith("<"):
+    if fmt == "ISO20022_XML" or (fmt == "AUTO" and stripped.startswith("<")):
         return parse_iso20022_xml(stripped)
-    if fmt == "MT940" or ":61:" in stripped or stripped.startswith(":20:"):
+    if fmt == "MT940" or (fmt == "AUTO" and (":61:" in stripped or stripped.startswith(":20:"))):
         return parse_mt940_statement(stripped)
-    if fmt == "BAI2" or stripped.startswith("01,") or "\n16," in stripped or stripped.startswith("16,"):
+    if fmt == "BAI2" or (fmt == "AUTO" and (stripped.startswith(("01,", "16,")) or "\n16," in stripped)):
         return parse_bai2_statement(stripped)
     return parse_bank_csv(stripped)
+
+
+def add_ledger_references(hint: RemittanceHint, text: str, invoice_ids: set[str], memo_ids: set[str]) -> None:
+    """Recognize organization-specific IDs in addition to the common INV and CM patterns."""
+    tokens = list(dict.fromkeys(re.findall(r"[\w]+(?:[.-][\w]+)*", text.upper())))
+    for token in tokens:
+        if not (any(c.isalpha() for c in token) and any(c.isdigit() for c in token)):
+            continue
+        if token in invoice_ids and token not in hint.referenced_invoices:
+            hint.referenced_invoices.append(token)
+        if token in memo_ids and token not in hint.referenced_credit_memos:
+            hint.referenced_credit_memos.append(token)
 
 
 def enrich_transactions_with_remittance_emails(
     transactions: List[BankTransaction],
     remittance_email_text: str,
+    *,
+    invoice_ids: set[str] | None = None,
+    memo_ids: set[str] | None = None,
 ) -> None:
     """
     Parses decoupled email / PDF OCR remittance advice blocks (separated by '---') and merges
@@ -449,54 +497,55 @@ def enrich_transactions_with_remittance_emails(
     for block in blocks:
         block_hints = extract_unstructured_remittance_hints(block)
         block_upper = block.upper()
-        for tx in transactions:
-            # Match by Transaction ID, Bank Reference, or Payer Name substring
-            payer_token = tx.payer_name.split()[0].upper() if tx.payer_name else ""
-            if (
-                tx.tx_id.upper() in block_upper
-                or (tx.bank_reference and tx.bank_reference.upper() in block_upper)
-                or (len(payer_token) >= 4 and payer_token in block_upper)
-            ):
-                for inv_id in block_hints.referenced_invoices:
-                    if inv_id not in tx.hints.referenced_invoices:
-                        tx.hints.referenced_invoices.append(inv_id)
-                for cm_id in block_hints.referenced_credit_memos:
-                    if cm_id not in tx.hints.referenced_credit_memos:
-                        tx.hints.referenced_credit_memos.append(cm_id)
-                if block_hints.claimed_discount_pct is not None and tx.hints.claimed_discount_pct is None:
-                    tx.hints.claimed_discount_pct = block_hints.claimed_discount_pct
-                if block_hints.claimed_tds_pct is not None and tx.hints.claimed_tds_pct is None:
-                    tx.hints.claimed_tds_pct = block_hints.claimed_tds_pct
-                if block_hints.claimed_wire_fee is not None and tx.hints.claimed_wire_fee is None:
-                    tx.hints.claimed_wire_fee = block_hints.claimed_wire_fee
-                if block_hints.claimed_deduction_amount is not None and tx.hints.claimed_deduction_amount is None:
-                    tx.hints.claimed_deduction_amount = block_hints.claimed_deduction_amount
-                    tx.hints.claimed_deduction_reason = block_hints.claimed_deduction_reason
-                tx.raw_remittance_unstructured = (
-                    f"{tx.raw_remittance_unstructured} [EMAIL-ENRICHED: {block[:90]}...]"
-                ).strip()
+        add_ledger_references(block_hints, block, invoice_ids or set(), memo_ids or set())
+        references = set(re.findall(r"[\w]+(?:[.-][\w]+)*", block_upper))
+        matched = [tx for tx in transactions if tx.tx_id.upper() in references
+                   or (tx.bank_reference and tx.bank_reference.upper() in references)]
+        if not matched:
+            matched = [tx for tx in transactions if len(tx.payer_name) >= 4 and tx.payer_name.upper() in block_upper]
+        if len(matched) != 1:
+            continue
+        tx = matched[0]
+        for inv_id in block_hints.referenced_invoices:
+            if inv_id not in tx.hints.referenced_invoices:
+                tx.hints.referenced_invoices.append(inv_id)
+        for cm_id in block_hints.referenced_credit_memos:
+            if cm_id not in tx.hints.referenced_credit_memos:
+                tx.hints.referenced_credit_memos.append(cm_id)
+        if block_hints.claimed_discount_pct is not None and tx.hints.claimed_discount_pct is None:
+            tx.hints.claimed_discount_pct = block_hints.claimed_discount_pct
+        if block_hints.claimed_tds_pct is not None and tx.hints.claimed_tds_pct is None:
+            tx.hints.claimed_tds_pct = block_hints.claimed_tds_pct
+        if block_hints.claimed_wire_fee is not None and tx.hints.claimed_wire_fee is None:
+            tx.hints.claimed_wire_fee = block_hints.claimed_wire_fee
+        if block_hints.claimed_deduction_amount is not None and tx.hints.claimed_deduction_amount is None:
+            tx.hints.claimed_deduction_amount = block_hints.claimed_deduction_amount
+            tx.hints.claimed_deduction_reason = block_hints.claimed_deduction_reason
+        tx.raw_remittance_unstructured = (
+            f"{tx.raw_remittance_unstructured} [EMAIL-ENRICHED: {block[:90]}...]"
+        ).strip()
 
 
 def parse_invoices_csv(csv_content: str) -> List[OpenInvoice]:
     """Parses Open Accounts Receivable (AR) Invoice Ledger CSV."""
-    reader = csv.DictReader(io.StringIO(csv_content.strip()))
+    reader = csv.DictReader(io.StringIO(csv_content.strip().lstrip("\ufeff")))
     invoices: List[OpenInvoice] = []
-    for row in reader:
-        gross = _safe_decimal(row.get("gross_amount") or row.get("Amount"))
-        open_amt = _safe_decimal(row.get("open_amount") or row.get("Open Balance") or str(gross))
+    for index, row in enumerate(reader, 1):
+        gross = _ledger_amount(row.get("gross_amount") or row.get("Amount"), f"invoice gross amount at row {index}")
+        open_amt = _ledger_amount(row.get("open_amount") or row.get("Open Balance") or str(gross), f"open balance at row {index}")
         invoices.append(
             OpenInvoice(
                 invoice_id=(row.get("invoice_id") or row.get("Invoice ID") or "").strip(),
                 customer_id=(row.get("customer_id") or row.get("Customer ID") or "").strip(),
                 customer_name=(row.get("customer_name") or row.get("Customer Name") or "").strip(),
-                issue_date=(row.get("issue_date") or "2026-10-25").strip(),
-                due_date=(row.get("due_date") or "2026-11-24").strip(),
+                issue_date=(row.get("issue_date") or "").strip(),
+                due_date=(row.get("due_date") or "").strip(),
                 gross_amount=gross,
                 open_amount=open_amt,
-                currency=(row.get("currency") or "USD").strip().upper(),
-                payment_terms=(row.get("payment_terms") or "Net 30").strip(),
-                eligible_discount_pct=_safe_decimal(row.get("eligible_discount_pct") or "0.00"),
-                expected_tds_pct=_safe_decimal(row.get("expected_tds_pct") or "0.00"),
+                currency=(row.get("currency") or "").strip().upper(),
+                payment_terms=(row.get("payment_terms") or "").strip(),
+                eligible_discount_pct=_ledger_amount(row.get("eligible_discount_pct") or "0", f"discount rate at invoice row {index}"),
+                expected_tds_pct=_ledger_amount(row.get("expected_tds_pct") or "0", f"withholding rate at invoice row {index}"),
                 po_number=(row.get("po_number") or "").strip() or None,
             )
         )
@@ -505,18 +554,18 @@ def parse_invoices_csv(csv_content: str) -> List[OpenInvoice]:
 
 def parse_credit_memos_csv(csv_content: str) -> List[CreditMemo]:
     """Parses Open Credit Memos CSV."""
-    reader = csv.DictReader(io.StringIO(csv_content.strip()))
+    reader = csv.DictReader(io.StringIO(csv_content.strip().lstrip("\ufeff")))
     memos: List[CreditMemo] = []
-    for row in reader:
+    for index, row in enumerate(reader, 1):
         memos.append(
             CreditMemo(
                 memo_id=(row.get("memo_id") or "").strip(),
                 customer_id=(row.get("customer_id") or "").strip(),
                 customer_name=(row.get("customer_name") or "").strip(),
-                amount=_safe_decimal(row.get("amount")),
+                amount=_ledger_amount(row.get("amount"), f"credit memo amount at row {index}"),
                 reason=(row.get("reason") or "Credit Note").strip(),
                 related_invoice_id=(row.get("related_invoice_id") or "").strip() or None,
-                currency=(row.get("currency") or "USD").strip().upper(),
+                currency=(row.get("currency") or "").strip().upper(),
             )
         )
     return memos

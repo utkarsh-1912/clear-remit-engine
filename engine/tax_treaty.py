@@ -3,7 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 
 @dataclass
@@ -148,18 +148,11 @@ def evaluate_withholding_compliance(
     Validates whether a cross-border tax deduction matches statutory DTAA rules or represents
     excess penalty withholding that can be recovered/avoided.
     """
-    rule: Optional[TreatyRule] = None
-    for candidate in DTAA_TREATY_TABLE:
-        if candidate.corridor_code == corridor_code.upper() and candidate.service_category == service_category.upper():
-            rule = candidate
-            break
+    rule = next((candidate for candidate in DTAA_TREATY_TABLE
+                 if candidate.corridor_code == corridor_code.upper()
+                 and candidate.service_category == service_category.upper()), None)
     if rule is None:
-        for candidate in DTAA_TREATY_TABLE:
-            if candidate.corridor_code == corridor_code.upper():
-                rule = candidate
-                break
-    if rule is None:
-        rule = DTAA_TREATY_TABLE[0]
+        raise ValueError("Unsupported corridor and service category combination.")
 
     actual_pct = (
         ((withheld_amount / gross_amount) * Decimal("100")).quantize(Decimal("0.01"))
@@ -173,19 +166,19 @@ def evaluate_withholding_compliance(
         status = "COMPLIANT_TREATY_RATE"
         rec = (
             f"Withheld rate ({actual_pct:g}%) matches {rule.corridor_code} treaty rate ({rule.treaty_wht_pct:g}%). "
-            f"Book ${withheld_amount:,.2f} to GL 1150 (Prepaid TDS/Foreign Tax Credit Receivable) and collect {rule.foreign_tax_credit_form}."
+            f"Review the applicable documentation, including {rule.foreign_tax_credit_form}."
         )
     elif actual_pct > rule.treaty_wht_pct:
         status = "OVERWITHHELD_MISSING_DOCS"
         rec = (
-            f"ALERT: Payer withheld {actual_pct:g}% (${withheld_amount:,.2f}) vs. treaty cap of {rule.treaty_wht_pct:g}% (${expected_amt:,.2f}). "
-            f"Excess withholding of ${excess_amt:,.2f} may be rejected by IRS as non-compulsory tax! Provide {', '.join(rule.required_forms)} to buyer immediately."
+            f"Withholding of {actual_pct:g}% exceeds the configured reference of {rule.treaty_wht_pct:g}%. "
+            f"Review the transaction and supporting documents: {', '.join(rule.required_forms)}."
         )
     else:
         status = "UNDERWITHHELD_AUDIT_RISK"
         rec = (
-            f"Payer withheld {actual_pct:g}% (${withheld_amount:,.2f}), below standard {rule.treaty_wht_pct:g}% rate. "
-            f"Ensure signed {', '.join(rule.required_forms)} is archived for tax audit readiness."
+            f"Withholding of {actual_pct:g}% is below the configured reference of {rule.treaty_wht_pct:g}%. "
+            f"Review the transaction and supporting documents: {', '.join(rule.required_forms)}."
         )
 
     return TaxWithholdingAuditResult(

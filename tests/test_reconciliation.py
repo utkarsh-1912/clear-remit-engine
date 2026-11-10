@@ -71,7 +71,7 @@ class TestClearRemitV2Suite(unittest.TestCase):
             self.assertEqual(total_debits, total_credits)
 
         self.assertIn("JE-TX-101", export_quickbooks_csv(proposals))
-        self.assertIn("ISO20022 Auto-Recon TX-101", export_xero_csv(proposals))
+        self.assertIn("Reconciliation TX-101", export_xero_csv(proposals))
         self.assertIn("NS-RECON-TX-101", export_netsuite_csv(proposals))
         self.assertIn("<TALLYMESSAGE", export_tally_xml(proposals))
 

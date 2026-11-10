@@ -122,6 +122,7 @@ class DeductionLine:
     gl_account_name: str
     is_authorized: bool = True
     related_invoice_id: Optional[str] = None
+    credit_memo_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -132,6 +133,7 @@ class DeductionLine:
             "gl_account_name": self.gl_account_name,
             "is_authorized": self.is_authorized,
             "related_invoice_id": self.related_invoice_id,
+            "credit_memo_id": self.credit_memo_id,
         }
 
 
@@ -196,6 +198,8 @@ class ReconciliationProposal:
     journal_entries: List[JournalEntryLine] = field(default_factory=list)
     explanation_summary: str = ""
     dispute_notice_draft: Optional[str] = None
+    booking_date: str = ""
+    currency: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -214,6 +218,8 @@ class ReconciliationProposal:
             "journal_entries": [j.to_dict() for j in self.journal_entries],
             "explanation_summary": self.explanation_summary,
             "dispute_notice_draft": self.dispute_notice_draft,
+            "booking_date": self.booking_date,
+            "currency": self.currency,
         }
 
 
@@ -238,3 +244,4 @@ class SolverConfig:
     )
     auto_writeoff_tolerance: Decimal = Decimal("5.00")
     max_subset_size: int = 6
+    max_candidate_checks: int = 10_000
