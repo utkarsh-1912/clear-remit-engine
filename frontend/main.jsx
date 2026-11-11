@@ -84,7 +84,7 @@ function Dashboard({ metadata }) {
       <CardHeader className="panel-heading"><div><h2>Reconciliation runs</h2><p>Open a saved run to review transactions and see its decision history.</p></div></CardHeader>
       <ErrorBanner error={runs.error} />
       {!runs.data && !runs.error && <Loading />}
-      {runs.data?.length > 0 && <div className="table-wrap"><Table columns={columns} rows={runs.data} getRowKey={run => run.id} /></div>}
+      {runs.data?.length > 0 && <Table columns={columns} rows={runs.data} getRowKey={run => run.id} />}
       {runs.data?.length === 0 && offset === 0 && <CardBody>
         <EmptyState title="No reconciliation runs yet" action={<Button href="#new" variant="ghost" iconRight={<ArrowRight size={15} />}>Create your first run</Button>}>
           Import a bank statement and an open invoice ledger to get started.
@@ -297,13 +297,13 @@ function TaxScreen({ metadata }) {
     </Card>
     <Card className="panel">
       <CardHeader className="panel-heading"><h2>Configured treaty references</h2></CardHeader>
-      <div className="table-wrap"><Table rows={metadata.treaty_rules} getRowKey={rule => rule.corridor_code + rule.service_category}
+      <Table rows={metadata.treaty_rules} getRowKey={rule => rule.corridor_code + rule.service_category}
         columns={[
           { key: 'corridor_code', header: 'Corridor' },
           { key: 'service_category', header: 'Service', render: rule => humanize(rule.service_category) },
           { key: 'treaty_article', header: 'Reference' },
           { key: 'treaty_wht_pct', header: 'Rate', render: rule => `${rule.treaty_wht_pct}%`, align: 'right' },
-        ]} /></div>
+        ]} />
     </Card>
   </>;
 }
@@ -363,20 +363,20 @@ function TransactionDetail({ proposal, run, demo, update, reload }) {
       <p className="explanation">{proposal.explanation_summary}</p>
       {tx.raw_remittance_unstructured && <details><summary>Source remittance</summary><pre>{tx.raw_remittance_unstructured}</pre></details>}
       {proposal.allocations.length > 0 && <section><h3>Invoice allocations</h3>
-        <div className="table-wrap"><Table rows={proposal.allocations} getRowKey={row => row.invoice_id}
-          columns={[{ key: 'invoice_id', header: 'Invoice' }, amount('gross_amount', 'Open balance'), amount('net_settled', 'Applied cash')]} /></div>
+        <Table rows={proposal.allocations} getRowKey={row => row.invoice_id}
+          columns={[{ key: 'invoice_id', header: 'Invoice' }, amount('gross_amount', 'Open balance'), amount('net_settled', 'Applied cash')]} />
       </section>}
       {proposal.deductions.length > 0 && <section><h3>Deductions</h3>
-        <div className="table-wrap"><Table rows={proposal.deductions} getRowKey={(_, index) => index}
+        <Table rows={proposal.deductions} getRowKey={(_, index) => index}
           columns={[{ key: 'description', header: 'Description' }, amount('amount', 'Amount'),
-            { key: 'authorization', header: 'Classification', render: row => row.is_authorized ? 'Allowed' : 'Exception' }]} /></div>
+            { key: 'authorization', header: 'Classification', render: row => row.is_authorized ? 'Allowed' : 'Exception' }]} />
       </section>}
       <section><h3>Proposed journal</h3>
-        <div className="table-wrap"><Table rows={proposal.journal_entries} getRowKey={row => row.line_number}
+        <Table rows={proposal.journal_entries} getRowKey={row => row.line_number}
           columns={[
             { key: 'account_name', header: 'Account', render: row => `${row.account_code} · ${row.account_name}` },
             amount('debit', 'Debit'), amount('credit', 'Credit'),
-          ]} /></div>
+          ]} />
       </section>
       {Object.hasOwn(run.result.tax_audits, tx.tx_id) && <AuditResult audit={run.result.tax_audits[tx.tx_id]} currency={currency} />}
       {proposal.dispute_notice_draft && <details><summary>Draft dispute notice</summary><pre>{proposal.dispute_notice_draft}</pre></details>}
@@ -429,13 +429,13 @@ function RunView({ id, demo, metadata }) {
     </div>
     <Card className="panel">
       <CardHeader className="panel-heading"><h2>Batch totals by currency</h2></CardHeader>
-      <div className="table-wrap"><Table rows={balances} getRowKey={row => row.currency}
+      <Table rows={balances} getRowKey={row => row.currency}
         columns={[
           { key: 'currency', header: 'Currency' },
           { key: 'total_deposit_cash', header: 'Incoming cash', align: 'right', render: row => money(row.total_deposit_cash, row.currency) },
           { key: 'total_gross_ar_cleared', header: 'Proposed AR clearing', align: 'right', render: row => money(row.total_gross_ar_cleared, row.currency) },
           { key: 'total_deductions_resolved', header: 'Deductions', align: 'right', render: row => money(row.total_deductions_resolved, row.currency) },
-        ]} /></div>
+        ]} />
     </Card>
     <div className="review-layout">
       <Card className="panel">
@@ -474,13 +474,13 @@ function RunView({ id, demo, metadata }) {
       </Card>
       <Card className="panel">
         <CardHeader className="panel-heading"><h2>Review history</h2></CardHeader>
-        {run.review_history.length > 0 ? <div className="table-wrap"><Table rows={[...run.review_history].reverse()}
+        {run.review_history.length > 0 ? <Table rows={[...run.review_history].reverse()}
           getRowKey={row => `${row.tx_id}:${row.version}`}
           columns={[
             { key: 'tx_id', header: 'Transaction' }, { key: 'decision', header: 'Decision' },
             { key: 'actor', header: 'Operator' }, { key: 'note', header: 'Note' },
             { key: 'created_at', header: 'Recorded', render: row => timestamp(row.created_at) },
-          ]} /></div> : <CardBody><p>No decisions have been recorded.</p></CardBody>}
+          ]} /> : <CardBody><p>No decisions have been recorded.</p></CardBody>}
       </Card>
     </>}
   </>;
@@ -498,7 +498,7 @@ function App() {
     return () => window.removeEventListener('hashchange', navigate);
   }, []);
   const [page, id] = route.split('/');
-  return <div className="shell">
+  return <div className="workspace-shell">
     <a className="skip" href="#main-content" onClick={event => {
       event.preventDefault();
       document.getElementById('main-content').focus();
