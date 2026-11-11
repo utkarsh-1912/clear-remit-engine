@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, Select,
-  Spinner, Stat, Table, Textarea, ThemeProvider,
+  Sidebar, Spinner, Stat, Table, Textarea, ThemeProvider,
 } from '@utkristi/ui';
 import {
   ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Banknote, ClipboardCheck,
@@ -503,14 +503,15 @@ function App() {
       event.preventDefault();
       document.getElementById('main-content').focus();
     }}>Skip to content</a>
-    <aside className="sidebar">
-      <a href="#runs" className="brand"><span><Layers3 size={22} /></span><div>ClearRemit<small>RECEIVABLES WORKSPACE</small></div></a>
+    <Sidebar className="workspace-sidebar" heading={
+      <a href="#runs" className="brand"><Layers3 size={22} aria-hidden="true" /><span>ClearRemit<small>Receivables workspace</small></span></a>
+    }>
       <nav aria-label="Workspace">
-        <a href="#runs" aria-current={page !== 'tax' ? 'page' : undefined}><FileSpreadsheet size={17} /> Reconciliation</a>
-        <a href="#tax" aria-current={page === 'tax' ? 'page' : undefined}><Scale size={17} /> Treaty screening</a>
+        <a href="#runs" aria-current={page !== 'tax' ? 'page' : undefined}><span><FileSpreadsheet size={17} aria-hidden="true" /> Reconciliation</span></a>
+        <a href="#tax" aria-current={page === 'tax' ? 'page' : undefined}><span><Scale size={17} aria-hidden="true" /> Treaty screening</span></a>
       </nav>
-      <div className="sidebar-foot"><Banknote size={17} /> Finance operations</div>
-    </aside>
+      <div className="sidebar-foot muted"><Banknote size={17} aria-hidden="true" /> Finance operations</div>
+    </Sidebar>
     <main id="main-content" className="main stack" tabIndex={-1}>
       <ErrorBanner error={metadata.error} />
       {!metadata.data && !metadata.error && <Loading />}

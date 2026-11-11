@@ -7,7 +7,6 @@
   --ut-on-accent: #fff;
   --cr-line: #dce5ec;
   --cr-panel: #fff;
-  --cr-nav: #142b3d;
   --cr-mint: #d9f4e9;
   --cr-green: #106655;
   font-family: Inter, "Segoe UI", system-ui, sans-serif;
@@ -25,27 +24,14 @@ h3 { font-size: 1rem; margin-bottom: 8px; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; line-height: 1.55; }
 summary { cursor: pointer; font-weight: 650; }
 .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
-.sidebar {
-  position: sticky; top: 0; height: 100vh; padding: 30px 16px 20px;
-  display: flex; flex-direction: column; background: var(--cr-nav); color: #d7e3ed;
-}
+.workspace-sidebar { position: sticky; top: 0; align-self: start; }
 .brand {
-  display: flex; align-items: center; gap: 11px; padding: 0 8px;
-  color: #fff; text-decoration: none; font-size: 1.2rem; font-weight: 720; letter-spacing: -.025em;
+  display: flex; align-items: center; gap: 10px; padding: 8px;
+  color: var(--ut-ink); text-decoration: none; font-size: 1.2rem;
 }
-.brand > span { background: var(--cr-mint); color: #124d43; display: grid; place-items: center; width: 37px; height: 37px; border-radius: 10px; }
-.brand small { color: #b8ccdb; display: block; font-size: .57rem; font-weight: 650; margin-top: 4px; letter-spacing: .11em; }
-.sidebar nav { display: grid; gap: 6px; margin-top: 44px; }
-.sidebar nav a {
-  display: flex; align-items: center; gap: 11px; padding: 10px 12px; min-height: 42px;
-  text-decoration: none; color: #d7e3ed; font-size: .9rem; border-radius: 8px;
-}
-.sidebar nav a:hover, .sidebar nav a[aria-current] { background: #2a4658; color: #fff; }
-.sidebar nav a[aria-current] svg { color: #a8ead4; }
-.sidebar-foot {
-  margin-top: auto; padding: 15px 8px 0; border-top: 1px solid #395064;
-  display: flex; align-items: center; gap: 9px; font-size: .8rem; color: #b8ccdb;
-}
+.brand small { color: var(--ut-ink-2); display: block; font-size: .72rem; }
+.workspace-sidebar nav a > span, .sidebar-foot { display: flex; align-items: center; gap: 8px; }
+.sidebar-foot { margin: 12px 8px 0; font-size: .8rem; }
 .main { margin: 0 auto; padding: 40px clamp(20px, 4vw, 58px) 50px; width: 100%; max-width: 1520px; align-content: start; }
 .main > .btn { justify-self: start; }
 .stack { display: grid; gap: 20px; }
@@ -117,9 +103,8 @@ summary { cursor: pointer; font-weight: 650; }
 }
 @media (max-width: 760px) {
   .shell { display: block; }
-  .sidebar { position: static; height: auto; padding: 15px; gap: 12px; }
-  .sidebar nav { margin: 0; display: flex; flex-wrap: wrap; }
-  .sidebar nav a { min-height: 38px; padding: 8px 9px; }
+  .workspace-sidebar { position: static; }
+  .workspace-sidebar nav { display: flex; flex-wrap: wrap; }
   .sidebar-foot { display: none; }
   .main { padding: 18px 14px 32px; }
   .page-heading { align-items: start; flex-direction: column; }
