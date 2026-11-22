@@ -17,10 +17,12 @@ from typing import Annotated, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints, model_validator
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from engine.exporters import (
     export_netsuite_csv,
@@ -513,3 +515,31 @@ def index():
     if not path.is_file():
         return PlainTextResponse("Build the frontend with npm ci and npm run build.", status_code=503)
     return FileResponse(path, headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})
+
+
+def is_page_request(request: Request) -> bool:
+    path = request.url.path.split("/", 2)[1]
+    return request.method in {"GET", "HEAD"} and path not in {"api", "assets"}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404 and is_page_request(request):
+        path = DIST_DIR / "index.html"
+        if path.is_file():
+            return FileResponse(path, status_code=404, headers={"Cache-Control": "no-store"})
+        return HTMLResponse(
+            '<!doctype html><html lang="en"><meta charset="utf-8"><title>Page not found · ClearRemit</title>'
+            '<main><h1>Page not found</h1><a href="/">Back to workspace</a></main></html>',
+            status_code=404,
+        )
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(500)
+async def unexpected_error(request: Request, _exc: Exception):
+    if is_page_request(request):
+        return FileResponse(BASE_DIR / "static" / "500.html", status_code=500,
+                            headers={"Cache-Control": "no-store"})
+    return JSONResponse({"detail": "Something went wrong. Try again."}, status_code=500,
+                        headers={"Cache-Control": "no-store"})

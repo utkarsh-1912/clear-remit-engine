@@ -30,6 +30,7 @@ summary { cursor: pointer; font-weight: 650; }
   padding: 18px 12px; border-radius: 0; border-width: 0 1px 0 0;
 }
 .workspace-sidebar .sidebar-content { display: flex; flex: 1; flex-direction: column; gap: 16px; }
+.workspace-sidebar .sidebar-content[hidden] { display: none; }
 .workspace-sidebar nav { display: grid; gap: 4px; }
 .workspace-sidebar nav a { min-block-size: 44px; display: flex; align-items: center; }
 .workspace-sidebar svg { flex: none; }
@@ -139,6 +140,7 @@ summary { cursor: pointer; font-weight: 650; }
 .allocation-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(90px, 1fr) auto; gap: 12px; align-items: end; }
 .workspace-sidebar .field { min-width: 0; }
 .main > .form-grid > .panel { min-width: 0; }
+.card.error-page { width: min(100%, 640px); margin: 32px auto; }
 @media (max-width: 460px) {
   .allocation-row { grid-template-columns: 1fr; }
 }

@@ -5,12 +5,13 @@ import {
   Sidebar, SidebarLink, Spinner, Stat, Table, Textarea, ThemeProvider,
 } from '@utkristi/ui';
 import {
-  ArrowLeft, ArrowRight, ArrowUpRight, Banknote, ClipboardCheck,
+  ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Banknote, ClipboardCheck,
   FileSpreadsheet, FlaskConical, Layers3, Plus, Scale, Upload,
 } from 'lucide-react';
 import '@utkristi/ui/css';
 import { api, humanize, money, post, timestamp } from './api';
 import { CustomerPortal, Integrations, Receivables } from './receivables';
+import { ErrorBoundary, ErrorPage } from './errors';
 import {
   Administration, AuditLog, CaseQueue, ExportCenter, Ledger, ManualAllocation,
   Overview, PrepareExport,
@@ -22,6 +23,8 @@ const statuses = {
   ACTION_REQUIRED_SHORT_PAY: ['Exception', 'warn'],
   UNMATCHED_SUSPENSE: ['Unmatched', 'bad'],
 };
+const mobileSidebarQuery = '(max-width: 760px)';
+const runIdPattern = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 
 function getReview(run, txId) {
   return Object.hasOwn(run.reviews, txId) ? run.reviews[txId] : null;
@@ -404,7 +407,7 @@ function TransactionDetail({ proposal, run, demo, update, reload, session }) {
   </Card>;
 }
 
-function RunView({ id, demo, metadata, session }) {
+function RunView({ id, demo, metadata, session, onEntity }) {
   const path = demo ? `/sample?fmt=${encodeURIComponent(id)}` : `/runs/${encodeURIComponent(id)}`;
   const { data, error, update } = useResource(path);
   const [filter, setFilter] = useState('');
@@ -412,6 +415,9 @@ function RunView({ id, demo, metadata, session }) {
   const [selected, setSelected] = useState(null);
   const [refreshError, setRefreshError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  useEffect(() => {
+    if (!demo && data?.entity_id) onEntity(data.entity_id);
+  }, [demo, data?.entity_id, onEntity]);
   async function reload() {
     setRefreshError(null);
     setRefreshing(true);
@@ -423,7 +429,8 @@ function RunView({ id, demo, metadata, session }) {
       setRefreshing(false);
     }
   }
-  if (error) return <ErrorBanner error={error} />;
+  if (error?.status === 404) return <ErrorPage notFound title={demo ? 'Sample not found' : 'Run not found'} />;
+  if (error) return <ErrorPage retry={reload} description={refreshError?.message ?? error.message} />;
   if (!data) return <Loading />;
   const run = demo ? { result: data, name: metadata.demo_formats[id], reviews: {} } : data;
   const { proposals, summary } = run.result;
@@ -508,7 +515,8 @@ function App() {
     try { return localStorage.getItem('clearremit-entity') ?? 'default'; } catch { return 'default'; }
   });
   const [route, setRoute] = useState(location.hash.slice(1) || 'overview');
-  const [switchError, setSwitchError] = useState(null);
+  const [mobileSidebar, setMobileSidebar] = useState(() => matchMedia(mobileSidebarQuery).matches);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   async function refreshEntities() {
     const [newEntities, newOrganizations] = await Promise.all([api('/entities'), api('/organizations')]);
     entities.update(newEntities);
@@ -516,23 +524,24 @@ function App() {
   }
   const entity = entities.data?.find(item => item.id === entityId) ?? entities.data?.[0];
   useEffect(() => {
+    const query = matchMedia(mobileSidebarQuery);
+    function resize(event) {
+      setMobileSidebar(event.matches);
+      setSidebarOpen(false);
+    }
+    query.addEventListener('change', resize);
+    return () => query.removeEventListener('change', resize);
+  }, []);
+  useEffect(() => {
     function navigate() {
       setRoute(location.hash.slice(1) || 'overview');
+      setSidebarOpen(false);
       window.scrollTo(0, 0);
     }
     window.addEventListener('hashchange', navigate);
     return () => window.removeEventListener('hashchange', navigate);
   }, []);
-  const [page, id] = route.split('/');
-  useEffect(() => {
-    if (page !== 'run' || !id) return;
-    let active = true;
-    setSwitchError(null);
-    api(`/runs/${encodeURIComponent(id)}`).then(run => {
-      if (active) setEntityId(run.entity_id);
-    }).catch(error => { if (active) setSwitchError(error); });
-    return () => { active = false; };
-  }, [page, id]);
+  const [page, id, extra] = route.split('/');
   const pages = [
     ['overview', 'Overview', Banknote], ['runs', 'Reconciliation', FileSpreadsheet],
     ['ledger', 'Customers and invoices', FileSpreadsheet], ['cases', 'Exceptions and collections', ClipboardCheck],
@@ -541,6 +550,9 @@ function App() {
     ['exports', 'ERP handoff', Upload], ['tax', 'Treaty screening', Scale],
     ['audit', 'Audit trail', ClipboardCheck], ['settings', 'Administration', Layers3],
   ];
+  const detailRoute = extra === undefined && (page === 'demo' && !!id || page === 'run' && runIdPattern.test(id));
+  const validRoute = detailRoute || (id === undefined && (page === 'new' || pages.some(([key]) => key === page)));
+  const startupError = metadata.error ?? entities.error ?? session.error;
   function switchEntity(event) {
     setEntityId(event.target.value);
     try { localStorage.setItem('clearremit-entity', event.target.value); } catch { /* Storage may be unavailable. */ }
@@ -551,7 +563,8 @@ function App() {
       event.preventDefault();
       document.getElementById('main-content').focus();
     }}>Skip to content</a>
-    <Sidebar className="workspace-sidebar" heading={
+    <Sidebar className="workspace-sidebar" collapsible={mobileSidebar} collapsed={mobileSidebar && !sidebarOpen}
+      onCollapsedChange={collapsed => setSidebarOpen(!collapsed)} toggleLabel="Toggle workspace navigation" heading={
       <a href="#overview" className="brand"><Layers3 size={22} aria-hidden="true" /><span>ClearRemit<small>Receivables workspace</small></span></a>
     }>
       {entity && <Field label="Client or legal entity">
@@ -562,33 +575,44 @@ function App() {
       <nav aria-label="Workspace">
         {pages.map(([key, label, Icon]) => <SidebarLink key={key} href={`#${key}`} label={label}
           icon={<Icon size={17} />}
+          onClick={event => {
+            if (!mobileSidebar || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            setSidebarOpen(false);
+            document.getElementById('main-content').focus();
+          }}
           aria-current={(page === key || key === 'runs' && ['new', 'run', 'demo'].includes(page)) ? 'page' : undefined} />)}
       </nav>
       {session.data && <div className="sidebar-foot muted">{session.data.username} · {session.data.role}</div>}
     </Sidebar>
     <main id="main-content" className="main stack" tabIndex={-1}>
-      <ErrorBanner error={metadata.error ?? entities.error ?? session.error ?? switchError} />
-      {(!metadata.data || !entities.data || !session.data) && !metadata.error && !entities.error && !session.error && <Loading />}
-      {entities.data?.length === 0 && <EmptyState title="No entities are assigned to this operator">Ask your administrator to assign organization access.</EmptyState>}
-      {metadata.data && entity && session.data && (page === 'new' ? <NewRun key={entity.id} metadata={metadata.data} entity={entity} />
-        : page === 'tax' ? <TaxScreen metadata={metadata.data} />
-        : page === 'ledger' ? <Ledger key={entity.id} entity={entity} session={session.data} />
-        : page === 'invoices' ? <Receivables key={entity.id} entity={entity} session={session.data} />
-        : page === 'integrations' ? <Integrations key={entity.id} entity={entity} />
-        : page === 'cases' ? <CaseQueue key={entity.id} entity={entity} session={session.data} />
-        : page === 'exports' ? <ExportCenter key={entity.id} entity={entity} session={session.data} />
-        : page === 'audit' ? <AuditLog key={entity.id} entity={entity} />
-        : page === 'settings' ? <Administration key={entity.id + ':' + entity.version} entity={entity} entities={entities.data}
-          organizations={organizations.data ?? []} session={session.data} refreshEntities={refreshEntities} metadata={metadata.data} />
-        : (page === 'run' || page === 'demo') && id ? <RunView key={route} id={id} demo={page === 'demo'} metadata={metadata.data} session={session.data} />
-        : page === 'overview' ? <Overview key={entity.id} entity={entity} session={session.data} />
-        : <Dashboard key={entity.id} metadata={metadata.data} entity={entity} session={session.data} />)}
+      <ErrorBoundary key={route}>
+        {!validRoute ? <ErrorPage notFound />
+          : startupError ? <ErrorPage retry={() => location.reload()} />
+          : !metadata.data || !entities.data || !session.data ? <Loading />
+          : !entity ? <EmptyState title="No entities are assigned to this operator">Ask your administrator to assign organization access.</EmptyState>
+          : page === 'new' ? <NewRun key={entity.id} metadata={metadata.data} entity={entity} />
+          : page === 'tax' ? <TaxScreen metadata={metadata.data} />
+          : page === 'ledger' ? <Ledger key={entity.id} entity={entity} session={session.data} />
+          : page === 'invoices' ? <Receivables key={entity.id} entity={entity} session={session.data} />
+          : page === 'integrations' ? <Integrations key={entity.id} entity={entity} />
+          : page === 'cases' ? <CaseQueue key={entity.id} entity={entity} session={session.data} />
+          : page === 'exports' ? <ExportCenter key={entity.id} entity={entity} session={session.data} />
+          : page === 'audit' ? <AuditLog key={entity.id} entity={entity} />
+          : page === 'settings' ? <Administration key={entity.id + ':' + entity.version} entity={entity} entities={entities.data}
+            organizations={organizations.data ?? []} session={session.data} refreshEntities={refreshEntities} metadata={metadata.data} />
+          : detailRoute ? <RunView id={id} demo={page === 'demo'} metadata={metadata.data} session={session.data} onEntity={setEntityId} />
+          : page === 'overview' ? <Overview key={entity.id} entity={entity} session={session.data} />
+          : <Dashboard key={entity.id} metadata={metadata.data} entity={entity} session={session.data} />}
+      </ErrorBoundary>
     </main>
   </div>;
 }
 
 createRoot(document.getElementById('root')).render(
   <ThemeProvider defaultTheme="light" forcedTheme="light">
-    {location.pathname === '/portal' ? <CustomerPortal /> : <App />}
+    <ErrorBoundary>
+      {location.pathname === '/portal' ? <CustomerPortal />
+        : location.pathname === '/' ? <App /> : <main className="main"><ErrorPage notFound /></main>}
+    </ErrorBoundary>
   </ThemeProvider>,
 );
