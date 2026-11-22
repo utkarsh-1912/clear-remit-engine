@@ -69,6 +69,10 @@ class TestWorkspace(unittest.TestCase):
             self.assertNotIn("BANK-21", response.text)
             run = client.get(route, auth=self.auth).json()
             self.assertEqual(run["review_history"][0]["actor"], "reviewer")
+            batch = run["batches"][0]
+            receipt = {"version": 0, "status": "rejected", "receipt": "Review reopened before ERP import"}
+            self.assertEqual(client.post(f"/api/export-batches/{batch['id']}/receipt",
+                                         json=receipt, auth=self.auth).status_code, 200)
             rejected = {"tx_id": "BANK-20", "decision": "rejected", "note": "Reopened", "version": 1}
             self.assertEqual(client.post(f"{route}/reviews", json=rejected, auth=self.auth).status_code, 200)
             self.assertEqual(client.get(download, auth=self.auth).status_code, 409)

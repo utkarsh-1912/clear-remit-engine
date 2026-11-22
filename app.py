@@ -6,6 +6,7 @@ import base64
 import binascii
 import csv
 import hashlib
+import json
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -13,22 +14,21 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from engine.exporters import (
-    ExportJournal,
     export_netsuite_csv,
     export_quickbooks_csv,
     export_tally_xml,
     export_xero_csv,
 )
-from engine.models import JournalEntryLine, SolverConfig
+from engine.models import SolverConfig
 from engine.parsers import (
     add_ledger_references,
     detect_and_parse_statement,
@@ -135,6 +135,8 @@ class ReconcileRequest(BaseModel):
 class RunRequest(ReconcileRequest):
     submission_id: UUID
     name: Label
+    entity_id: str = "default"
+    use_registered_ledger: bool = False
 
 
 class ReviewRequest(BaseModel):
@@ -149,14 +151,30 @@ async def lifespan(app: FastAPI):
     workspace = Workspace(Path(os.getenv("CLEARREMIT_DB_PATH", str(BASE_DIR / "data" / "workspace.sqlite3"))))
     username = os.getenv("CLEARREMIT_USERNAME")
     password = os.getenv("CLEARREMIT_PASSWORD")
+    users = json.loads(os.getenv("CLEARREMIT_USERS_JSON", "[]"))
+    if not isinstance(users, list):
+        raise RuntimeError("CLEARREMIT_USERS_JSON must be an array of operators.")
+    proxy_key = os.getenv("CLEARREMIT_SSO_PROXY_SECRET", "")
+    for user in users:
+        if (not isinstance(user, dict) or not user.get("username")
+                or not (user.get("password") or (proxy_key and user.get("sso_subject")))
+                or user.get("role") not in {"admin", "analyst", "approver", "auditor"}):
+            raise RuntimeError("Each operator requires a username, credential and supported role.")
+        if any(not isinstance(user.get(key, []), list) for key in ("organizations", "entities")):
+            raise RuntimeError("Operator organizations and entities must be lists of IDs.")
     if bool(username) != bool(password):
         raise RuntimeError("Configure both CLEARREMIT_USERNAME and CLEARREMIT_PASSWORD.")
-    if os.getenv("CLEARREMIT_REQUIRE_AUTH") == "1" and not username:
+    if os.getenv("CLEARREMIT_REQUIRE_AUTH") == "1" and not username and not users:
         raise RuntimeError("Workspace authentication credentials are required.")
     workspace.initialize()
     app.state.workspace = workspace
     app.state.credentials = f"{username}:{password}".encode("utf-8") if username else None
     app.state.username = username or "local operator"
+    app.state.users = users
+    app.state.connectors = load_connectors()
+    if proxy_key and len(proxy_key) < 32:
+        raise RuntimeError("CLEARREMIT_SSO_PROXY_SECRET must have at least 32 characters.")
+    app.state.sso_proxy_key = proxy_key
     yield
 
 
@@ -166,15 +184,35 @@ app = FastAPI(title="ClearRemit Reconciliation Workspace", version="3.0.0", life
 @app.middleware("http")
 async def protect_workspace(request: Request, call_next):
     credentials = getattr(app.state, "credentials", None)
-    if credentials and request.url.path != "/api/health":
+    users = getattr(app.state, "users", [])
+    proxy_key = getattr(app.state, "sso_proxy_key", "")
+    request.state.operator = {"username": app.state.username, "role": "admin", "organizations": ["*"]}
+    public = request.url.path in {"/api/health", "/portal", "/api/portal", "/api/portal/requests"}
+    public = public or request.url.path.startswith("/api/connector-hooks/")
+    if (credentials or users or proxy_key) and not public and not request.url.path.startswith("/assets/"):
         scheme, _, encoded = request.headers.get("authorization", "").partition(" ")
         try:
             supplied = base64.b64decode(encoded, validate=True) if scheme.lower() == "basic" else b""
         except (ValueError, binascii.Error):
             supplied = b""
-        if not secrets.compare_digest(credentials, supplied):
+        operator = None
+        proxy_supplied = request.headers.get("x-clearremit-proxy-key", "")
+        subject = request.headers.get("x-clearremit-identity", "")
+        verified_proxy = proxy_key and secrets.compare_digest(proxy_key.encode(), proxy_supplied.encode()) and subject
+        for user in users:
+            matches_basic = user.get("password") and secrets.compare_digest(
+                f'{user["username"]}:{user["password"]}'.encode(), supplied
+            )
+            if matches_basic or (verified_proxy and subject == user.get("sso_subject")):
+                operator = {key: user.get(key, []) for key in ("username", "role", "organizations")}
+                if "entities" in user:
+                    operator["entities"] = user["entities"]
+        if credentials and secrets.compare_digest(credentials, supplied):
+            operator = {"username": app.state.username, "role": "admin", "organizations": ["*"]}
+        if operator is None:
             return PlainTextResponse("Workspace sign-in required", status_code=401,
                                      headers={"WWW-Authenticate": 'Basic realm="ClearRemit", charset="UTF-8"'})
+        request.state.operator = operator
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         if request.headers.get("sec-fetch-site") == "cross-site":
             return PlainTextResponse("Cross-site workspace writes are blocked", status_code=403)
@@ -369,36 +407,63 @@ def get_sample_benchmark(fmt: str = "iso20022") -> dict:
 
 
 @app.post("/api/reconcile")
-def reconcile_custom(req: ReconcileRequest) -> dict:
+def reconcile_custom(req: ReconcileRequest, request: Request) -> dict:
+    require_role(request, "admin", "analyst", "approver")
     return _run_pipeline(req)
 
 
 @app.get("/api/runs")
-def list_runs(limit: Annotated[int, Query(ge=1, le=100)] = 25, offset: Annotated[int, Query(ge=0)] = 0):
-    return app.state.workspace.list_runs(limit, offset)
+def list_runs(request: Request, limit: Annotated[int, Query(ge=1, le=100)] = 25,
+              offset: Annotated[int, Query(ge=0)] = 0, entity_id: str = "default"):
+    entity_access(request, entity_id)
+    return app.state.workspace.list_runs(limit, offset, entity_id)
 
 
 @app.post("/api/runs", status_code=201)
-def create_run(req: RunRequest):
+def create_run(req: RunRequest, request: Request):
+    require_role(request, "admin", "analyst")
+    entity_access(request, req.entity_id)
+    return submit_run(req, request.state.operator["username"])
+
+
+def submit_run(req: RunRequest, actor: str):
     run_id = str(req.submission_id)
-    fingerprint = hashlib.sha256(req.model_dump_json().encode()).hexdigest()
+    fingerprint_data = req.model_dump_json(exclude={"use_registered_ledger"} if not req.use_registered_ledger else set())
+    fingerprint = hashlib.sha256(fingerprint_data.encode()).hexdigest()
     existing = app.state.workspace.find_submission(run_id, fingerprint)
     if existing is not None:
         return existing
     settings = req.model_dump(mode="json", exclude={
         "submission_id", "name", "statement_content", "invoices_csv", "credit_memos_csv", "remittance_emails_text",
     })
-    return app.state.workspace.save_run(run_id, req.name, app.state.username, fingerprint, settings, _run_pipeline(req))
+    pipeline_request = req
+    if req.use_registered_ledger:
+        if req.invoices_csv.strip():
+            raise HTTPException(422, "Choose either the invoice register or an uploaded ledger.")
+        ledger = registered_ledger(app.state.workspace, req.entity_id)
+        pipeline_request = req.model_copy(update={"invoices_csv": ledger})
+    result = _run_pipeline(pipeline_request)
+    if req.use_registered_ledger:
+        for invoice in result["invoices"]:
+            invoice["opening_amount"] = invoice["gross_amount"]
+    return app.state.workspace.save_run(run_id, req.name, actor, fingerprint,
+                                       settings, result, req.entity_id)
 
 
 @app.get("/api/runs/{run_id}")
-def get_run(run_id: UUID):
-    return app.state.workspace.get_run(str(run_id))
+def get_run(run_id: UUID, request: Request):
+    return run_access(request, str(run_id))
 
 
 @app.post("/api/runs/{run_id}/reviews")
-def review_transaction(run_id: UUID, req: ReviewRequest):
-    return app.state.workspace.review(str(run_id), req.tx_id, req.decision, req.note, req.version, app.state.username)
+def review_transaction(run_id: UUID, req: ReviewRequest, request: Request):
+    require_role(request, "admin", "approver")
+    run = run_access(request, str(run_id))
+    entity = entity_access(request, run["entity_id"])
+    if req.decision == "approved" and entity["settings"].get("separate_approval") and run["created_by"] == request.state.operator["username"]:
+        raise HTTPException(409, "A different operator must approve this entity's journals.")
+    return app.state.workspace.review(str(run_id), req.tx_id, req.decision, req.note,
+                                      req.version, request.state.operator["username"])
 
 
 @app.post("/api/tax-audit")
@@ -407,27 +472,17 @@ def run_tax_audit(req: TaxAuditRequest) -> dict:
 
 
 @app.get("/api/runs/{run_id}/exports/{fmt}")
-def download_export(run_id: UUID, fmt: str, currency: Currency):
+def download_export(run_id: UUID, fmt: str, currency: Currency, request: Request):
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        raise HTTPException(403, "Open exports from the workspace.")
+    run = run_access(request, str(run_id))
+    require_role(request, "admin", "approver")
     if fmt not in EXPORTS:
         raise HTTPException(status_code=404, detail="Unsupported ERP format.")
-    run = app.state.workspace.get_run(str(run_id))
-    journals = []
-    for proposal in run["result"]["proposals"]:
-        review = run["reviews"].get(proposal["tx_id"])
-        if proposal["currency"] != currency or not review or review["decision"] != "approved":
-            continue
-        lines = [JournalEntryLine(**{**line, "debit": Decimal(str(line["debit"])),
-                                    "credit": Decimal(str(line["credit"]))})
-                 for line in proposal["journal_entries"]]
-        journals.append(ExportJournal(proposal["tx_id"], proposal["booking_date"], proposal["currency"],
-                                      proposal["matched_customer_name"], proposal["explanation_summary"], lines))
-    if not journals:
-        raise HTTPException(status_code=409, detail="Approve at least one matching journal in this currency.")
-    _, _, media_type, extension = EXPORTS[fmt]
-    return PlainTextResponse(
-        _export(fmt, journals, run["settings"]), media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{run_id}-{currency}-{fmt}.{extension}"'},
-    )
+    key = json.dumps([str(run_id), fmt, currency, run["revision"], run["reviews"]], sort_keys=True)
+    batch_id = str(uuid5(NAMESPACE_URL, key))
+    app.state.workspace.prepare_export(str(run_id), fmt, currency, request.state.operator["username"], batch_id)
+    return RedirectResponse(f"/api/export-batches/{batch_id}/download", status_code=307)
 
 
 @app.get("/api/export/{fmt}")
@@ -442,9 +497,19 @@ def download_sample_export(fmt: str):
 app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets", check_dir=False), name="assets")
 
 
+from platform_api import entity_access, register_routes, require_role, run_access
+from receivables import register_receivables, registered_ledger
+from integrations import load_connectors, register_integrations
+
+register_routes(app)
+register_receivables(app)
+register_integrations(app, RunRequest, submit_run, _export, EXPORTS)
+
+
 @app.get("/", include_in_schema=False)
+@app.get("/portal", include_in_schema=False)
 def index():
     path = DIST_DIR / "index.html"
     if not path.is_file():
         return PlainTextResponse("Build the frontend with npm ci and npm run build.", status_code=503)
-    return FileResponse(path)
+    return FileResponse(path, headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})

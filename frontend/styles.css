@@ -136,3 +136,9 @@ summary { cursor: pointer; font-weight: 650; }
   .account-row > span { grid-column: 1 / -1; }
   .detail-metrics { grid-template-columns: 1fr; }
 }
+.allocation-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(90px, 1fr) auto; gap: 12px; align-items: end; }
+.workspace-sidebar .field { min-width: 0; }
+.main > .form-grid > .panel { min-width: 0; }
+@media (max-width: 460px) {
+  .allocation-row { grid-template-columns: 1fr; }
+}

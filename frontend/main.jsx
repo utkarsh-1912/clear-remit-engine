@@ -2,14 +2,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, Select,
-  Sidebar, Spinner, Stat, Table, Textarea, ThemeProvider,
+  Sidebar, SidebarLink, Spinner, Stat, Table, Textarea, ThemeProvider,
 } from '@utkristi/ui';
 import {
-  ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Banknote, ClipboardCheck,
+  ArrowLeft, ArrowRight, ArrowUpRight, Banknote, ClipboardCheck,
   FileSpreadsheet, FlaskConical, Layers3, Plus, Scale, Upload,
 } from 'lucide-react';
 import '@utkristi/ui/css';
 import { api, humanize, money, post, timestamp } from './api';
+import { CustomerPortal, Integrations, Receivables } from './receivables';
+import {
+  Administration, AuditLog, CaseQueue, ExportCenter, Ledger, ManualAllocation,
+  Overview, PrepareExport,
+} from './platform';
 import './styles.css';
 
 const statuses = {
@@ -57,9 +62,9 @@ function PageHeading({ eyebrow, title, children, action }) {
   </header>;
 }
 
-function Dashboard({ metadata }) {
+function Dashboard({ metadata, entity, session }) {
   const [offset, setOffset] = useState(0);
-  const runs = useResource(`/runs?limit=25&offset=${offset}`);
+  const runs = useResource(`/runs?limit=25&offset=${offset}&entity_id=${encodeURIComponent(entity.id)}`);
   const [demoFormat, setDemoFormat] = useState(Object.keys(metadata.demo_formats)[0]);
   const columns = [
     { key: 'name', header: 'Run', render: run => <a className="table-link" href={`#run/${run.id}`}>{run.name}</a> },
@@ -72,7 +77,7 @@ function Dashboard({ metadata }) {
   ];
   return <>
     <PageHeading eyebrow="Receivables operations" title="Reconciliation workspace"
-      action={<Button href="#new" iconLeft={<Plus size={16} />}>New reconciliation</Button>}>
+      action={['admin', 'analyst'].includes(session.role) && <Button href="#new" iconLeft={<Plus size={16} />}>New reconciliation</Button>}>
       Match incoming payments to open invoices and review journal entries before exporting them.
     </PageHeading>
     <div className="process-band">
@@ -139,7 +144,9 @@ async function fileText(form, field) {
   return file.size ? file.text() : '';
 }
 
-function NewRun({ metadata }) {
+function NewRun({ metadata, entity }) {
+  const [useRegister, setUseRegister] = useState(false);
+  const policy = entity.settings.policy ?? {};
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const submission = useRef(null);
@@ -151,7 +158,7 @@ function NewRun({ metadata }) {
     setError(null);
     setBusy(true);
     try {
-      const files = await Promise.all(fields.map(field => fileText(data, field)));
+      const files = await Promise.all(fields.map(field => field === 'invoices_csv' && useRegister ? '' : fileText(data, field)));
       const accounts = Object.fromEntries(Object.entries(metadata.accounts).flatMap(([code, name]) => {
         const account = { code: data.get(`code_${code}`).trim(), name: data.get(`name_${code}`).trim() };
         return account.code === code && account.name === name ? [] : [[code, account]];
@@ -159,6 +166,8 @@ function NewRun({ metadata }) {
       const payload = {
         ...Object.fromEntries(fields.map((field, index) => [field, files[index]])),
         name: data.get('name'),
+        entity_id: entity.id,
+        use_registered_ledger: useRegister,
         statement_format: data.get('statement_format'),
         fallback_currency: data.get('fallback_currency').trim().toUpperCase() || null,
         fallback_booking_date: data.get('fallback_booking_date') || null,
@@ -197,11 +206,17 @@ function NewRun({ metadata }) {
             {Object.entries(metadata.statement_formats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </Select></Field>
           <UploadField name="statement_content" label="Bank statement" hint="ISO 20022 XML, MT940, BAI2 or bank CSV" accept=".xml,.txt,.csv,.mt940,.bai,.bai2,.sta,.940,.dat" required />
-          <UploadField name="invoices_csv" label="Open invoice ledger" hint="CSV with invoice IDs, customer information, balances and currency" accept=".csv" required />
+          <Field label="Invoice source">
+            <Select value={useRegister ? 'register' : 'file'} onChange={event => setUseRegister(event.target.value === 'register')}>
+              <option value="file">Upload an open invoice ledger</option>
+              <option value="register">Use this entity's invoice register</option>
+            </Select>
+          </Field>
+          {!useRegister && <UploadField name="invoices_csv" label="Open invoice ledger" hint="CSV with invoice IDs, customer information, balances and currency" accept=".csv" required />}
           <UploadField name="credit_memos_csv" label="Credit memos" hint="Optional approved credit memo CSV" accept=".csv" />
           <UploadField name="remittance_emails_text" label="Remittance advice" hint="Optional plain text" accept=".txt,.eml" />
           <Field label="Fallback currency" controlId="fallback_currency" hint="Three-letter code used where currency is missing.">
-            <Input name="fallback_currency" id="fallback_currency" pattern="[A-Za-z]{3}" placeholder="e.g. EUR" />
+            <Input name="fallback_currency" id="fallback_currency" pattern="[A-Za-z]{3}" placeholder="e.g. EUR" defaultValue={entity.currency} />
           </Field>
           <Field label="Fallback booking date" controlId="fallback_booking_date" hint="Used for statement entries without a date.">
             <Input type="date" id="fallback_booking_date" name="fallback_booking_date" />
@@ -211,9 +226,9 @@ function NewRun({ metadata }) {
       <Card className="panel">
         <CardHeader className="panel-heading"><div><h2>Matching policy</h2><p>Enter comma-separated values for additional solver candidates.</p></div></CardHeader>
         <CardBody className="form-grid">
-          <Field label="Discount rates (%)" controlId="discount"><Input id="discount" name="allowed_discount_pcts" /></Field>
-          <Field label="Withholding rates (%)" controlId="withholding"><Input id="withholding" name="allowed_tds_pcts" /></Field>
-          <Field label="Wire fees (currency units)" controlId="fees"><Input id="fees" name="common_wire_fees" /></Field>
+          <Field label="Discount rates (%)" controlId="discount"><Input id="discount" name="allowed_discount_pcts" defaultValue={(policy.allowed_discount_pcts ?? []).join(', ')} /></Field>
+          <Field label="Withholding rates (%)" controlId="withholding"><Input id="withholding" name="allowed_tds_pcts" defaultValue={(policy.allowed_tds_pcts ?? []).join(', ')} /></Field>
+          <Field label="Wire fees (currency units)" controlId="fees"><Input id="fees" name="common_wire_fees" defaultValue={(policy.common_wire_fees ?? []).join(', ')} /></Field>
           <TreatySelect rules={metadata.treaty_rules} />
         </CardBody>
       </Card>
@@ -221,15 +236,15 @@ function NewRun({ metadata }) {
         <details className="settings">
           <summary>Chart of accounts and ERP settings</summary>
           <div className="form-grid">
-            <Field label="NetSuite subsidiary" controlId="subsidiary"><Input id="subsidiary" name="netsuite_subsidiary" maxLength={120} /></Field>
-            <Field label="NetSuite department" controlId="department"><Input id="department" name="netsuite_department" maxLength={120} /></Field>
-            <Field label="Xero tax rate label" controlId="xero_tax_rate"><Input id="xero_tax_rate" name="xero_tax_rate" maxLength={120} /></Field>
+            <Field label="NetSuite subsidiary" controlId="subsidiary"><Input id="subsidiary" name="netsuite_subsidiary" maxLength={120} defaultValue={policy.netsuite_subsidiary ?? ''} /></Field>
+            <Field label="NetSuite department" controlId="department"><Input id="department" name="netsuite_department" maxLength={120} defaultValue={policy.netsuite_department ?? ''} /></Field>
+            <Field label="Xero tax rate label" controlId="xero_tax_rate"><Input id="xero_tax_rate" name="xero_tax_rate" maxLength={120} defaultValue={policy.xero_tax_rate ?? ''} /></Field>
           </div>
           <div className="account-grid">
             {Object.entries(metadata.accounts).map(([code, name]) => <div className="account-row" key={code}>
               <span>{name}</span>
-              <Input aria-label={`${name} account code`} name={`code_${code}`} defaultValue={code} maxLength={120} />
-              <Input aria-label={`${name} account name`} name={`name_${code}`} defaultValue={name} maxLength={120} />
+              <Input aria-label={`${name} account code`} name={`code_${code}`} defaultValue={policy.accounts?.[code]?.code ?? code} maxLength={120} />
+              <Input aria-label={`${name} account name`} name={`name_${code}`} defaultValue={policy.accounts?.[code]?.name ?? name} maxLength={120} />
             </div>)}
           </div>
         </details>
@@ -308,7 +323,7 @@ function TaxScreen({ metadata }) {
   </>;
 }
 
-function ReviewDecision({ proposal, run, update, reload }) {
+function ReviewDecision({ proposal, run, update, reload, session }) {
   const review = getReview(run, proposal.tx_id);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -329,6 +344,9 @@ function ReviewDecision({ proposal, run, update, reload }) {
   }
   const unmatched = proposal.status === 'UNMATCHED_SUSPENSE';
   const noteRequired = proposal.status !== 'AUTO_RECONCILED';
+  if (!['admin', 'approver'].includes(session.role)) {
+    return <p>{review ? `Current review decision · ${review.decision}` : 'Awaiting an authorized approver.'}</p>;
+  }
   return <section className="review-box stack">
     <h3>Review decision</h3>
     {review && <p><strong>{review.decision === 'approved' ? 'Approved' : 'Rejected'}</strong> by {review.actor} · {timestamp(review.created_at)}</p>}
@@ -345,7 +363,7 @@ function ReviewDecision({ proposal, run, update, reload }) {
   </section>;
 }
 
-function TransactionDetail({ proposal, run, demo, update, reload }) {
+function TransactionDetail({ proposal, run, demo, update, reload, session }) {
   const tx = run.result.transactions.find(row => row.tx_id === proposal.tx_id);
   const currency = proposal.currency;
   const amount = (key, header) => ({ key, header, align: 'right', render: row => money(row[key], currency) });
@@ -380,12 +398,13 @@ function TransactionDetail({ proposal, run, demo, update, reload }) {
       </section>
       {Object.hasOwn(run.result.tax_audits, tx.tx_id) && <AuditResult audit={run.result.tax_audits[tx.tx_id]} currency={currency} />}
       {proposal.dispute_notice_draft && <details><summary>Draft dispute notice</summary><pre>{proposal.dispute_notice_draft}</pre></details>}
-      {!demo && <ReviewDecision proposal={proposal} run={run} update={update} reload={reload} />}
+      {!demo && <ManualAllocation proposal={proposal} run={run} update={update} session={session} />}
+      {!demo && <ReviewDecision proposal={proposal} run={run} update={update} reload={reload} session={session} />}
     </CardBody>
   </Card>;
 }
 
-function RunView({ id, demo, metadata }) {
+function RunView({ id, demo, metadata, session }) {
   const path = demo ? `/sample?fmt=${encodeURIComponent(id)}` : `/runs/${encodeURIComponent(id)}`;
   const { data, error, update } = useResource(path);
   const [filter, setFilter] = useState('');
@@ -412,7 +431,6 @@ function RunView({ id, demo, metadata }) {
     && `${p.tx_id} ${p.matched_customer_name}`.toLowerCase().includes(search.trim().toLowerCase()));
   const proposal = visible.find(p => p.tx_id === selected) ?? visible[0];
   const approved = proposals.filter(p => getReview(run, p.tx_id)?.decision === 'approved');
-  const currencies = [...new Set(approved.map(p => p.currency))].sort();
   const balances = Object.entries(summary.totals_by_currency).map(([currency, amounts]) => ({ currency, ...amounts }));
   return <>
     <Button href="#runs" variant="quiet" size="sm" iconLeft={<ArrowLeft size={15} />}>All runs</Button>
@@ -458,18 +476,13 @@ function RunView({ id, demo, metadata }) {
           {!visible.length && <EmptyState title="No transactions match these filters" />}
         </CardBody>
       </Card>
-      {proposal && <TransactionDetail key={proposal.tx_id} proposal={proposal} run={run} demo={demo} update={update} reload={reload} />}
+      {proposal && <TransactionDetail key={proposal.tx_id} proposal={proposal} run={run} demo={demo} update={update} reload={reload} session={session} />}
     </div>
     {!demo && <>
       <Card className="panel">
         <CardHeader className="panel-heading"><div><h2>Journal exports</h2><p>Download approved journals by currency.</p></div></CardHeader>
         <CardBody className="stack">
-          {!approved.length && <p>Approve a journal to enable exports.</p>}
-          {currencies.map(currency => <div key={currency} className="actions">
-            <Badge>{currency}</Badge>
-            {Object.entries(metadata.export_formats).map(([fmt, label]) => <Button key={fmt} variant="ghost" size="sm"
-              href={`/api/runs/${run.id}/exports/${fmt}?currency=${currency}`} download iconLeft={<ArrowDownToLine size={15} />}>{label}</Button>)}
-          </div>)}
+          <PrepareExport run={run} formats={metadata.export_formats} update={update} session={session} />
         </CardBody>
       </Card>
       <Card className="panel">
@@ -488,39 +501,94 @@ function RunView({ id, demo, metadata }) {
 
 function App() {
   const metadata = useResource('/workspace');
-  const [route, setRoute] = useState(location.hash.slice(1) || 'runs');
+  const organizations = useResource('/organizations');
+  const entities = useResource('/entities');
+  const session = useResource('/session');
+  const [entityId, setEntityId] = useState(() => {
+    try { return localStorage.getItem('clearremit-entity') ?? 'default'; } catch { return 'default'; }
+  });
+  const [route, setRoute] = useState(location.hash.slice(1) || 'overview');
+  const [switchError, setSwitchError] = useState(null);
+  async function refreshEntities() {
+    const [newEntities, newOrganizations] = await Promise.all([api('/entities'), api('/organizations')]);
+    entities.update(newEntities);
+    organizations.update(newOrganizations);
+  }
+  const entity = entities.data?.find(item => item.id === entityId) ?? entities.data?.[0];
   useEffect(() => {
     function navigate() {
-      setRoute(location.hash.slice(1) || 'runs');
+      setRoute(location.hash.slice(1) || 'overview');
       window.scrollTo(0, 0);
     }
     window.addEventListener('hashchange', navigate);
     return () => window.removeEventListener('hashchange', navigate);
   }, []);
   const [page, id] = route.split('/');
+  useEffect(() => {
+    if (page !== 'run' || !id) return;
+    let active = true;
+    setSwitchError(null);
+    api(`/runs/${encodeURIComponent(id)}`).then(run => {
+      if (active) setEntityId(run.entity_id);
+    }).catch(error => { if (active) setSwitchError(error); });
+    return () => { active = false; };
+  }, [page, id]);
+  const pages = [
+    ['overview', 'Overview', Banknote], ['runs', 'Reconciliation', FileSpreadsheet],
+    ['ledger', 'Customers and invoices', FileSpreadsheet], ['cases', 'Exceptions and collections', ClipboardCheck],
+    ['invoices', 'Invoice register', FileSpreadsheet],
+    ['integrations', 'Integrations', Layers3],
+    ['exports', 'ERP handoff', Upload], ['tax', 'Treaty screening', Scale],
+    ['audit', 'Audit trail', ClipboardCheck], ['settings', 'Administration', Layers3],
+  ];
+  function switchEntity(event) {
+    setEntityId(event.target.value);
+    try { localStorage.setItem('clearremit-entity', event.target.value); } catch { /* Storage may be unavailable. */ }
+    location.hash = 'overview';
+  }
   return <div className="workspace-shell">
     <a className="skip" href="#main-content" onClick={event => {
       event.preventDefault();
       document.getElementById('main-content').focus();
     }}>Skip to content</a>
     <Sidebar className="workspace-sidebar" heading={
-      <a href="#runs" className="brand"><Layers3 size={22} aria-hidden="true" /><span>ClearRemit<small>Receivables workspace</small></span></a>
+      <a href="#overview" className="brand"><Layers3 size={22} aria-hidden="true" /><span>ClearRemit<small>Receivables workspace</small></span></a>
     }>
+      {entity && <Field label="Client or legal entity">
+        <Select aria-label="Client or legal entity" value={entity.id} onChange={switchEntity}>
+          {entities.data.map(item => <option key={item.id} value={item.id}>{item.organization_name} / {item.name}</option>)}
+        </Select>
+      </Field>}
       <nav aria-label="Workspace">
-        <a href="#runs" aria-current={page !== 'tax' ? 'page' : undefined}><span><FileSpreadsheet size={17} aria-hidden="true" /> Reconciliation</span></a>
-        <a href="#tax" aria-current={page === 'tax' ? 'page' : undefined}><span><Scale size={17} aria-hidden="true" /> Treaty screening</span></a>
+        {pages.map(([key, label, Icon]) => <SidebarLink key={key} href={`#${key}`} label={label}
+          icon={<Icon size={17} />}
+          aria-current={(page === key || key === 'runs' && ['new', 'run', 'demo'].includes(page)) ? 'page' : undefined} />)}
       </nav>
-      <div className="sidebar-foot muted"><Banknote size={17} aria-hidden="true" /> Finance operations</div>
+      {session.data && <div className="sidebar-foot muted">{session.data.username} · {session.data.role}</div>}
     </Sidebar>
     <main id="main-content" className="main stack" tabIndex={-1}>
-      <ErrorBanner error={metadata.error} />
-      {!metadata.data && !metadata.error && <Loading />}
-      {metadata.data && (page === 'new' ? <NewRun metadata={metadata.data} />
+      <ErrorBanner error={metadata.error ?? entities.error ?? session.error ?? switchError} />
+      {(!metadata.data || !entities.data || !session.data) && !metadata.error && !entities.error && !session.error && <Loading />}
+      {entities.data?.length === 0 && <EmptyState title="No entities are assigned to this operator">Ask your administrator to assign organization access.</EmptyState>}
+      {metadata.data && entity && session.data && (page === 'new' ? <NewRun key={entity.id} metadata={metadata.data} entity={entity} />
         : page === 'tax' ? <TaxScreen metadata={metadata.data} />
-        : (page === 'run' || page === 'demo') && id ? <RunView key={route} id={id} demo={page === 'demo'} metadata={metadata.data} />
-        : <Dashboard metadata={metadata.data} />)}
+        : page === 'ledger' ? <Ledger key={entity.id} entity={entity} session={session.data} />
+        : page === 'invoices' ? <Receivables key={entity.id} entity={entity} session={session.data} />
+        : page === 'integrations' ? <Integrations key={entity.id} entity={entity} />
+        : page === 'cases' ? <CaseQueue key={entity.id} entity={entity} session={session.data} />
+        : page === 'exports' ? <ExportCenter key={entity.id} entity={entity} session={session.data} />
+        : page === 'audit' ? <AuditLog key={entity.id} entity={entity} />
+        : page === 'settings' ? <Administration key={entity.id + ':' + entity.version} entity={entity} entities={entities.data}
+          organizations={organizations.data ?? []} session={session.data} refreshEntities={refreshEntities} metadata={metadata.data} />
+        : (page === 'run' || page === 'demo') && id ? <RunView key={route} id={id} demo={page === 'demo'} metadata={metadata.data} session={session.data} />
+        : page === 'overview' ? <Overview key={entity.id} entity={entity} session={session.data} />
+        : <Dashboard key={entity.id} metadata={metadata.data} entity={entity} session={session.data} />)}
     </main>
   </div>;
 }
 
-createRoot(document.getElementById('root')).render(<ThemeProvider defaultTheme="light" forcedTheme="light"><App /></ThemeProvider>);
+createRoot(document.getElementById('root')).render(
+  <ThemeProvider defaultTheme="light" forcedTheme="light">
+    {location.pathname === '/portal' ? <CustomerPortal /> : <App />}
+  </ThemeProvider>,
+);
