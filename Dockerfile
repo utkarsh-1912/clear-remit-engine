@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py workspace.py platform_api.py receivables.py integrations.py ./
 COPY engine ./engine
 COPY static/500.html ./static/500.html
+COPY frontend/public-routes.json ./frontend/public-routes.json
 COPY sample_data ./sample_data
 COPY --from=frontend /build/dist ./dist
 CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port \"${PORT:-8000}\""]

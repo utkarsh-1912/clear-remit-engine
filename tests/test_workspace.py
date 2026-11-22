@@ -39,6 +39,24 @@ class TestWorkspace(unittest.TestCase):
         }))
         self.auth = ("reviewer", "workspace-test")
 
+    def test_public_demos_do_not_expose_workspace_data(self):
+        with TestClient(app) as client:
+            for fmt in ("iso20022", "mt940", "bai2"):
+                response = client.get(f"/api/public/demo/{fmt}")
+                self.assertEqual(response.status_code, 200)
+                sample = response.json()
+                self.assertGreater(len(sample["proposals"]), 0)
+                self.assertNotIn("raw_inputs", sample)
+                self.assertNotIn("tax_audits", sample)
+                export = client.get(f"/api/public/demo/{fmt}/exports/xero")
+                self.assertEqual(export.status_code, 200)
+                self.assertIn("attachment", export.headers["content-disposition"])
+            self.assertEqual(client.get("/api/public/demo/unknown").status_code, 422)
+            self.assertEqual(client.get("/api/public/demo/iso20022/exports/unknown").status_code, 404)
+            self.assertEqual(client.post("/api/public/demo/iso20022", json=inputs()).status_code, 405)
+            for path in ("/api/runs", "/api/sample", "/api/docs", "/openapi.json"):
+                self.assertEqual(client.get(path).status_code, 401)
+
     def test_review_gate_and_persistence(self):
         req = inputs()
         route = f"/api/runs/{req['submission_id']}"

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, Select,
@@ -12,11 +12,14 @@ import '@utkristi/ui/css';
 import { api, humanize, money, post, timestamp } from './api';
 import { CustomerPortal, Integrations, Receivables } from './receivables';
 import { ErrorBoundary, ErrorPage } from './errors';
+import publicRoutes from './public-routes.json';
 import {
   Administration, AuditLog, CaseQueue, ExportCenter, Ledger, ManualAllocation,
   Overview, PrepareExport,
 } from './platform';
 import './styles.css';
+
+const PublicSite = lazy(() => import('./public-site'));
 
 const statuses = {
   AUTO_RECONCILED: ['Matched', 'ok'],
@@ -582,6 +585,7 @@ function App() {
           }}
           aria-current={(page === key || key === 'runs' && ['new', 'run', 'demo'].includes(page)) ? 'page' : undefined} />)}
       </nav>
+      <a href="/home">ClearRemit website and docs</a>
       {session.data && <div className="sidebar-foot muted">{session.data.username} · {session.data.role}</div>}
     </Sidebar>
     <main id="main-content" className="main stack" tabIndex={-1}>
@@ -612,7 +616,10 @@ createRoot(document.getElementById('root')).render(
   <ThemeProvider defaultTheme="light" forcedTheme="light">
     <ErrorBoundary>
       {location.pathname === '/portal' ? <CustomerPortal />
-        : location.pathname === '/' ? <App /> : <main className="main"><ErrorPage notFound /></main>}
+        : location.pathname === '/' ? <App />
+        : Object.hasOwn(publicRoutes, location.pathname.replace(/\/$/, ''))
+          ? <Suspense fallback={<Loading />}><PublicSite /></Suspense>
+          : <main className="main"><ErrorPage notFound /></main>}
     </ErrorBoundary>
   </ThemeProvider>,
 );

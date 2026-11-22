@@ -1,0 +1,20 @@
+{
+  "/home": "Receivables operations",
+  "/product": "Product",
+  "/solutions": "Solutions",
+  "/solutions/finance": "Finance teams",
+  "/solutions/accounting-firms": "Accounting firms",
+  "/solutions/enterprise": "Multi-entity enterprises",
+  "/integrations": "Integrations",
+  "/pricing": "Hosting and pricing",
+  "/security": "Security and controls",
+  "/demo": "Interactive demo",
+  "/demo/iso20022": "ISO 20022 demo",
+  "/demo/mt940": "MT940 demo",
+  "/demo/bai2": "BAI2 demo",
+  "/docs": "Documentation",
+  "/docs/getting-started": "Getting started",
+  "/docs/workflows": "Receivables workflows",
+  "/docs/connectors": "Connector setup",
+  "/docs/api": "API reference"
+}

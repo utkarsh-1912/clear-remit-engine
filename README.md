@@ -15,6 +15,8 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8000
 
 Open [the local workspace](http://127.0.0.1:8000). It starts empty. Use **Open sample** to inspect fixtures in a read-only view. For frontend development, run `npm run dev` alongside the API on port 8000.
 
+The [public site](http://127.0.0.1:8000/home), [sample demos](http://127.0.0.1:8000/demo), and [user documentation](http://127.0.0.1:8000/docs) are available without workspace credentials. Workspace and API access follow the deployment's authentication settings. Interactive OpenAPI documentation is at `/api/docs`.
+
 ## Import, review, and export
 
 1. Create a run and upload a statement and open-invoice ledger. Supported inputs include ISO 20022 camt.053 and pacs.008, MT940, BAI2, and bank CSV. Optional files include credit memo CSV and plain-text remittance advice.

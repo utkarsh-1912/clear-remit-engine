@@ -12,6 +12,8 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from decimal import Decimal
+from functools import lru_cache
+from html import escape
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -45,6 +47,7 @@ from workspace import ReviewConflict, RunNotFound, Workspace
 BASE_DIR = Path(__file__).resolve().parent
 SAMPLE_DIR = BASE_DIR / "sample_data"
 DIST_DIR = BASE_DIR / "dist"
+PUBLIC_PAGES = json.loads((BASE_DIR / "frontend" / "public-routes.json").read_text(encoding="utf-8"))
 FORMATS = {
     "AUTO": "Auto-detect", "ISO20022_XML": "ISO 20022 XML",
     "MT940": "SWIFT MT940", "BAI2": "BAI2", "BANK_CSV": "Bank CSV",
@@ -180,7 +183,8 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="ClearRemit Reconciliation Workspace", version="3.0.0", lifespan=lifespan)
+app = FastAPI(title="ClearRemit Reconciliation Workspace", version="3.0.0", lifespan=lifespan,
+              docs_url="/api/docs", redoc_url="/api/redoc")
 
 
 @app.middleware("http")
@@ -190,7 +194,8 @@ async def protect_workspace(request: Request, call_next):
     proxy_key = getattr(app.state, "sso_proxy_key", "")
     request.state.operator = {"username": app.state.username, "role": "admin", "organizations": ["*"]}
     public = request.url.path in {"/api/health", "/portal", "/api/portal", "/api/portal/requests"}
-    public = public or request.url.path.startswith("/api/connector-hooks/")
+    public = public or request.url.path.rstrip("/") in PUBLIC_PAGES
+    public = public or request.url.path.startswith(("/api/connector-hooks/", "/api/public/demo/"))
     if (credentials or users or proxy_key) and not public and not request.url.path.startswith("/assets/"):
         scheme, _, encoded = request.headers.get("authorization", "").partition(" ")
         try:
@@ -408,6 +413,31 @@ def get_sample_benchmark(fmt: str = "iso20022") -> dict:
     return result
 
 
+@lru_cache(maxsize=3)
+def public_sample(fmt: str) -> dict:
+    return get_sample_benchmark(fmt)
+
+
+@app.get("/api/public/demo/{fmt}")
+def demo_fixture(fmt: Literal["iso20022", "mt940", "bai2"]):
+    sample = public_sample(fmt)
+    return {
+        "summary": sample["summary"],
+        "proposals": sample["proposals"],
+        "statement": sample["raw_inputs"]["statement_content"],
+        "export_formats": {key: item[0] for key, item in EXPORTS.items()},
+    }
+
+
+@app.get("/api/public/demo/{fmt}/exports/{erp}")
+def demo_export(fmt: Literal["iso20022", "mt940", "bai2"], erp: str):
+    if erp not in EXPORTS:
+        raise HTTPException(status_code=404, detail="Unknown demo export format.")
+    _, key, media_type, extension = EXPORTS[erp]
+    return PlainTextResponse(public_sample(fmt)["exports"][key], media_type=media_type,
+                             headers={"Content-Disposition": f'attachment; filename="clearremit-demo-{erp}.{extension}"'})
+
+
 @app.post("/api/reconcile")
 def reconcile_custom(req: ReconcileRequest, request: Request) -> dict:
     require_role(request, "admin", "analyst", "approver")
@@ -515,6 +545,21 @@ def index():
     if not path.is_file():
         return PlainTextResponse("Build the frontend with npm ci and npm run build.", status_code=503)
     return FileResponse(path, headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})
+
+
+def public_page(request: Request):
+    path = DIST_DIR / "index.html"
+    if not path.is_file():
+        return PlainTextResponse("Frontend build is unavailable.", status_code=503)
+    title = f"{PUBLIC_PAGES[request.url.path]} | ClearRemit"
+    html = path.read_text(encoding="utf-8").replace(
+        "<title>ClearRemit | Reconciliation Workspace</title>", f"<title>{escape(title)}</title>", 1,
+    )
+    return HTMLResponse(html)
+
+
+for page_path in PUBLIC_PAGES:
+    app.add_api_route(page_path, public_page, methods=["GET", "HEAD"], include_in_schema=False)
 
 
 def is_page_request(request: Request) -> bool:
