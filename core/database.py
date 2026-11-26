@@ -1,13 +1,15 @@
 """SQLite Persistence Layer & Default Chart of Accounts for ClearLedger Prime (Tally + Finacle EGL)."""
 
 from __future__ import annotations
+import os
 import pathlib
+from datetime import date
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_DB_PATH = BASE_DIR / "clearledger.db"
+DEFAULT_DB_PATH = pathlib.Path(os.environ.get("CLEARLEDGER_DB_PATH", BASE_DIR / "clearledger.db"))
 
 
 SCHEMA_SQL = """
@@ -185,14 +187,16 @@ def get_connection(db_path: Optional[pathlib.Path] = None) -> sqlite3.Connection
 
 
 def init_database(db_path: Optional[pathlib.Path] = None, seed_demo: bool = False) -> None:
+    (db_path or DEFAULT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA_SQL)
         conn.execute(
             """
             INSERT OR IGNORE INTO entity_config (id, entity_name, functional_currency, fiscal_year_start)
-            VALUES (1, 'ClearLedger Global Operations LLC', 'USD', '2026-04-01')
-            """
+            VALUES (1, 'General ledger', 'USD', ?)
+            """,
+            (date.today().replace(month=1, day=1).isoformat(),),
         )
         conn.executemany(
             """
@@ -202,14 +206,15 @@ def init_database(db_path: Optional[pathlib.Path] = None, seed_demo: bool = Fals
             """,
             DEFAULT_ACCOUNTS,
         )
-        conn.executemany(
-            """
-            INSERT OR IGNORE INTO fx_rates
-            (rate_date, base_currency, quote_currency, spot_rate, buy_rate, sell_rate)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            DEFAULT_FX_RATES,
-        )
+        if seed_demo:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO fx_rates
+                (rate_date, base_currency, quote_currency, spot_rate, buy_rate, sell_rate)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                DEFAULT_FX_RATES,
+            )
         conn.commit()
     finally:
         conn.close()

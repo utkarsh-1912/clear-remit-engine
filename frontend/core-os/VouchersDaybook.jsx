@@ -130,8 +130,7 @@ export default function VouchersDaybook({ core, onRefresh, onDrillAccount }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">Double-Entry Engine</div>
-          <h1>Vouchers &amp; Paginated Daybook</h1>
+          <h1>Vouchers &amp; daybook</h1>
           <p>Compose multi-line multi-currency vouchers with strict Dr == Cr enforcement and compensating reversals.</p>
         </div>
       </header>

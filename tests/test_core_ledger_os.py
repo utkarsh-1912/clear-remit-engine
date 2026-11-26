@@ -151,16 +151,16 @@ class TestClearLedgerPrimeInvariants(unittest.TestCase):
 
     def test_auth_registration_login_and_session_lifecycle(self):
         init_auth_tables(self.db_path)
-        # Verify seeded Demo CFO account authenticates cleanly
-        demo_res = authenticate_user("cfo@clearledger.io", "Prime2026!", db_path=self.db_path)
-        self.assertEqual(demo_res["user"]["email"], "cfo@clearledger.io")
-        self.assertIsNotNone(get_session_user(demo_res["token"], db_path=self.db_path))
+        with self.assertRaisesRegex(ValueError, "Invalid email or password"):
+            authenticate_user("cfo@clearledger.io", "Prime2026!", db_path=self.db_path)
 
         # Register new user and verify session + logout revocation
         reg = register_user("controller@acme.com", "SecurePass99!", "Priya Sharma", "Acme Global", db_path=self.db_path)
         self.assertEqual(reg["user"]["company_name"], "Acme Global")
         revoke_session(reg["token"], db_path=self.db_path)
         self.assertIsNone(get_session_user(reg["token"], db_path=self.db_path))
+        login = authenticate_user("controller@acme.com", "SecurePass99!", db_path=self.db_path)
+        self.assertEqual(get_session_user(login["token"], db_path=self.db_path)["user_id"], reg["user"]["user_id"])
 
 
 if __name__ == "__main__":

@@ -1,28 +1,20 @@
 import React, { useState } from 'react';
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Stat, Table, Textarea } from '@utkristi/ui';
+import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, Spinner, Stat, Table, Textarea } from '@utkristi/ui';
 import { apiFetch, fmtUsd } from './utils';
 
 export default function InvestmentTaxLots({ core, onRefresh }) {
   const [csvText, setCsvText] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [error, setError] = useState('');
+  const [importing, setImporting] = useState(false);
   const inv = core.investments;
   const s = inv.summary;
-
-  async function loadSampleCsv() {
-    setError('');
-    try {
-      const res = await apiFetch('/api/investments/sample-csv');
-      setCsvText(res.csv_content);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
 
   async function handleIngest(e) {
     e.preventDefault();
     setError('');
     setStatusMsg('');
+    setImporting(true);
     try {
       const res = await apiFetch('/api/investments/ingest', {
         method: 'POST',
@@ -32,6 +24,8 @@ export default function InvestmentTaxLots({ core, onRefresh }) {
       await onRefresh();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -58,12 +52,8 @@ export default function InvestmentTaxLots({ core, onRefresh }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">Post-Settlement Accounting</div>
-          <h1>Investment &amp; Capital Gains Tax-Lot Ledger</h1>
+          <h1>Investment tax lots</h1>
           <p>Import post-settlement broker contract notes to compute FIFO cost basis and statutory STCG/LTCG schedules.</p>
-        </div>
-        <div className="actions">
-          <Button variant="ghost" onClick={loadSampleCsv}>Load Sample Contract Notes CSV</Button>
         </div>
       </header>
 
@@ -81,16 +71,25 @@ export default function InvestmentTaxLots({ core, onRefresh }) {
         <CardHeader className="panel-heading"><div><h2>Import Post-Trade Broker CSV</h2></div></CardHeader>
         <CardBody>
           <form onSubmit={handleIngest} className="stack" style={{ gap: 12 }}>
-            <Field label="CSV Columns: trade_date,action,symbol,asset_class,quantity,unit_price,brokerage_charges,currency,broker_ref">
+            <Field label="Broker CSV file">
+              <Input type="file" accept=".csv" disabled={importing} onChange={async e => {
+                try {
+                  if (e.target.files[0]) setCsvText(await e.target.files[0].text());
+                } catch (err) {
+                  setError(err.message);
+                }
+              }} />
+            </Field>
+            <Field label="CSV contents" hint="trade_date, action, symbol, asset_class, quantity, unit_price, brokerage_charges, currency, broker_ref">
               <Textarea
                 rows={6}
                 required
                 value={csvText}
                 onChange={e => setCsvText(e.target.value)}
-                placeholder="Paste post-settlement broker CSV or click 'Load Sample Contract Notes CSV' above…"
+                placeholder="Paste CSV or select a file above"
               />
             </Field>
-            <div className="actions"><Button type="submit" disabled={!csvText.trim()}>Import &amp; Post to Core GL</Button></div>
+            <div className="actions"><Button type="submit" disabled={importing || !csvText.trim()} iconLeft={importing ? <Spinner /> : undefined}>Import &amp; Post to Core GL</Button></div>
           </form>
         </CardBody>
       </Card>

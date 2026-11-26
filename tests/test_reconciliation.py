@@ -124,8 +124,19 @@ class TestClearRemitV2Suite(unittest.TestCase):
         self.assertEqual(over_res.excess_overwithheld_amount, Decimal("2400.00"))
 
     def test_fastapi_endpoints_direct(self):
-        for fmt in ("iso20022", "mt940", "bai2"):
-            res = fastapi_app.get_sample_benchmark(fmt)
+        for fmt, filename in [
+            ("ISO20022_XML", "sample_camt053.xml"),
+            ("MT940", "sample_mt940.txt"),
+            ("BAI2", "sample_bai2.txt"),
+        ]:
+            res = fastapi_app.reconcile_custom(fastapi_app.ReconcileRequest(
+                statement_format=fmt,
+                statement_content=(SAMPLE_DIR / filename).read_text(encoding="utf-8"),
+                invoices_csv=(SAMPLE_DIR / "open_invoices.csv").read_text(encoding="utf-8"),
+                credit_memos_csv=(SAMPLE_DIR / "credit_memos.csv").read_text(encoding="utf-8"),
+                tax_corridor="IN-US",
+                tax_service_category="TECHNICAL_SERVICES_FTS",
+            ))
             self.assertGreaterEqual(res["summary"]["total_transactions"], 4)
             self.assertIn("TX-103", res["tax_audits"])
 

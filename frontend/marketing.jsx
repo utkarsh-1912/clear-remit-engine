@@ -1,193 +1,114 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Badge, Button, Card, CardBody, CardHeader, Footer, Navbar, Spinner, Stat, ThemeToggle,
-} from '@utkristi/ui';
-import {
-  ArrowRight, Banknote, Database, Globe2, Layers3, Scale, ShieldCheck, TrendingUp, Zap,
-} from 'lucide-react';
-import { ClearLedgerLogo, LedgyMascot } from './brand';
+import React from 'react';
+import { Button, Card, CardBody, Navbar, ThemeToggle } from '@utkristi/ui';
+import { ArrowDown, ArrowLeftRight, BookOpen, FileChartColumn, Globe2, Layers3, Upload, WalletCards } from 'lucide-react';
+import { ClearLedgerLogo } from './brand';
+import Documentation from './public-docs';
+import publicRoutes from './public-routes.json';
 
-const CAPABILITIES = [
-  {
-    icon: Layers3,
-    title: 'Immutable Multi-Currency Core GL',
-    desc: 'Integer minor-unit accounting, tri-value currency legs, multi-line Tally vouchers, and running-balance ledger drill-down.',
-  },
-  {
-    icon: Globe2,
-    title: 'IAS 21 FX & Nostro Treasury',
-    desc: 'Date-wise FX spot matrix, cross-currency Nostro contra conversions with Realized FX Gain/Loss, and period-end IAS 21 revaluation.',
-  },
-  {
-    icon: Banknote,
-    title: 'ISO 20022 / MT940 / BAI2 Remittance Hub',
-    desc: 'Combinatorial subset-sum short-pay solver decodes lump-sum payments, discounts, credit memos, and blind wires into balanced GL entries.',
-  },
-  {
-    icon: Scale,
-    title: 'Cross-Border DTAA Tax Compliance',
-    desc: 'Audits bilateral withholding rates across international tax corridors and generates Foreign Tax Credit documentation checklists.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Post-Trade Investment Tax-Lot Ledger',
-    desc: 'Ingests settled broker contract notes to compute FIFO cost basis and statutory STCG vs. LTCG schedules synced directly to your Balance Sheet.',
-  },
-  {
-    icon: Zap,
-    title: 'GB-Scale Constant-Memory Streaming',
-    desc: 'Streams multi-gigabyte XML and CSV statements via O(1) RAM iterparse and batched SQLite WAL transactions with sub-15ms paginated queries.',
-  },
+const capabilities = [
+  [BookOpen, 'General ledger', 'Create accounts, post balanced vouchers, and trace balances to individual entries.'],
+  [ArrowLeftRight, 'Remittance', 'Match bank deposits to invoices, review deductions, and export proposed journals.'],
+  [Globe2, 'FX & treasury', 'Maintain exchange rates, record currency conversions, and preview IAS 21 revaluation.'],
+  [FileChartColumn, 'Financial reporting', 'Review your balance sheet, profit and loss, cash flow, and receivables aging.'],
+  [WalletCards, 'Investment tax lots', 'Import settled trades, track FIFO cost basis, and review realized gains.'],
+  [Upload, 'Bank imports', 'Upload bank CSV and ISO 20022 files for direct receipt posting.'],
 ];
 
-export default function MarketingPage({ onNavigate }) {
-  const [liveStats, setLiveStats] = useState(null);
+const pages = {
+  '/solutions': ['Financial operations by team', 'Explore how controllers, accounting firms, and treasury teams can use ClearLedger.', [
+    ['Finance teams', 'Record day-to-day transactions and review balances before close.', '/solutions/finance'],
+    ['Accounting firms', 'Trace client activity from source files to the general ledger.', '/solutions/accounting-firms'],
+    ['Enterprise finance', 'Coordinate treasury, receipts, and reporting within one ledger.', '/solutions/enterprise'],
+  ]],
+  '/solutions/finance': ['Finance teams', 'Keep a clear record of daily activity and review balances when you close.', [
+    ['Record', 'Post journal, sales, purchase, and receipt vouchers.'],
+    ['Reconcile', 'Upload bank statements and compare receipts against open invoices.'],
+    ['Review', 'Track outstanding receivables and drill into account balances.'],
+  ]],
+  '/solutions/accounting-firms': ['Accounting firms', 'Use a separate deployment for each client ledger.', [
+    ['Set up the chart', 'Review the default accounts, then add accounts needed by your client.'],
+    ['Bring in source data', 'Review and post journals or upload bank and broker records.'],
+    ['Prepare reports', 'Review voucher history, balance sheet, cash flow, and aging.'],
+  ]],
+  '/solutions/enterprise': ['Enterprise finance', 'Review accounting, treasury, and settlement activity in one ledger.', [
+    ['Treasury', 'Manage FX rates, record currency conversions, and preview revaluation.'],
+    ['Cash application', 'Review proposed allocations and download journal files for your ERP.'],
+    ['Reporting', 'Review changes through account-level drill-down and the daybook.'],
+  ]],
+  '/integrations': ['File formats & integrations', 'Exchange data with your bank, broker, and accounting system using file imports and exports.', [
+    ['Bank statements', 'ISO 20022 camt.053 XML, SWIFT MT940, BAI2, and bank CSV for reconciliation.'],
+    ['Supporting records', 'Open invoices and credit memos in CSV, remittance details in TXT, and settled broker trades in CSV.'],
+    ['ERP journals', 'Download QuickBooks, Xero, or NetSuite CSV files and Tally XML. Review the journal before importing it into your ERP.'],
+  ]],
+  '/pricing': ['Hosting', 'Run ClearLedger on your own infrastructure with a persistent SQLite database.', [
+    ['Local setup', 'Build the frontend and run FastAPI locally.', '/docs/getting-started'],
+    ['Server deployment', 'Use the Docker image with a persistent volume for the ledger.'],
+  ]],
+  '/security': ['Security & controls', 'Restrict access to operational data and retain the posting history.', [
+    ['Workspace access', 'Sign in to use ledger APIs. The initial setup creates the first account.'],
+    ['Posting history', 'Use reversal vouchers to correct the ledger and retain the original posting.'],
+    ['Reconciliation review', 'Review journal entries before posting a receipt or exporting a journal.'],
+  ]],
+};
 
-  useEffect(() => {
-    let active = true;
-    fetch('/api/core/overview')
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => { if (active && data) setLiveStats(data); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
+function CapabilityGrid() {
+  return <div className="marketing-grid">{capabilities.map(([Icon, title, description]) =>
+    <Card className="feature-card" key={title}><div className="feature-icon"><Icon size={21} /></div>
+      <h2>{title}</h2><p>{description}</p>
+    </Card>
+  )}</div>;
+}
 
-  const navItems = [
-    { label: 'Capabilities', href: '#capabilities' },
-    { label: 'Architecture', href: '#telemetry' },
-    { label: 'Sign In', href: '/auth', onClick: e => { e.preventDefault(); onNavigate('/auth'); } },
-  ];
+function Home() {
+  return <>
+    <section className="marketing-hero">
+      <div className="marketing-hero-copy">
+        <div className="marketing-kicker">Accounting & treasury</div>
+        <h1>From bank statement to balanced books.</h1>
+        <p>Reconcile incoming payments, manage foreign currency, and review your financial statements in one workspace.</p>
+        <div className="actions"><Button href="/app">Open workspace</Button><Button href="/product" variant="outline">Explore the product</Button></div>
+      </div>
+      <div className="workflow-visual" aria-label="How records move through ClearLedger">
+        <div className="workflow-title"><Layers3 size={19} /> From intake to reporting</div>
+        {[
+          [Upload, 'Import', 'Bank statements · invoices · trades'],
+          [ArrowLeftRight, 'Reconcile', 'Match deposits and review deductions'],
+          [BookOpen, 'Post', 'Review journals and update the ledger'],
+          [FileChartColumn, 'Report', 'Check balances, cash flow, and aging'],
+        ].map(([Icon, title, text], index) => <React.Fragment key={title}>
+          {index > 0 && <ArrowDown className="workflow-arrow" size={15} aria-hidden="true" />}
+          <div className="workflow-step"><div className="feature-icon"><Icon size={20} /></div><div><strong>{title}</strong><p>{text}</p></div></div>
+        </React.Fragment>)}
+      </div>
+    </section>
+    <section className="marketing-section"><h2>What you can do in ClearLedger</h2><CapabilityGrid /></section>
+  </>;
+}
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar
-        brand={
-          <a href="/" onClick={e => { e.preventDefault(); onNavigate('/'); }} style={{ textDecoration: 'none' }}>
-            <ClearLedgerLogo size={34} />
-          </a>
-        }
-        items={navItems}
-        actions={
-          <div className="actions">
-            <ThemeToggle />
-            <Button variant="ghost" onClick={() => onNavigate('/auth')}>Sign In</Button>
-            <Button onClick={() => onNavigate('/app')} iconRight={<ArrowRight size={15} />}>
-              Launch Workspace
-            </Button>
-          </div>
-        }
-      />
-
-      <main className="main stack" style={{ maxWidth: 1240 }}>
-        {/* Hero */}
-        <section
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: 32,
-            alignItems: 'center',
-            paddingBlock: 28,
-          }}
-        >
-          <div className="stack" style={{ gap: 16 }}>
-            <div>
-              <Badge tone="ok">Multi-Currency Core GL • IAS 21 FX • ISO 20022 • Post-Trade Tax Lots</Badge>
-            </div>
-            <h1>Unified Financial Core for Accounting, FX, Remittance &amp; Tax.</h1>
-            <p style={{ fontSize: '1.05rem', maxWidth: '58ch' }}>
-              ClearLedger Prime brings together an immutable double-entry ledger, real-time financial statements,
-              cross-border remittance reconciliation, and constant-memory multi-gigabyte ingestion in one modular OS.
-            </p>
-            <div className="actions" style={{ marginTop: 8 }}>
-              <Button onClick={() => onNavigate('/app')} iconRight={<ArrowRight size={16} />}>
-                Open Financial OS
-              </Button>
-              <Button variant="ghost" onClick={() => onNavigate('/auth')}>
-                Sign In / Create Account
-              </Button>
-            </div>
-          </div>
-
-          <Card className="panel">
-            <CardBody className="stack" style={{ alignItems: 'center', textAlign: 'center', padding: 28 }}>
-              <LedgyMascot size={190} />
-              <Badge tone="info">Ledgy — Zero-Variance Ledger Auditor</Badge>
-              {liveStats ? (
-                <div className="detail-metrics" style={{ width: '100%' }}>
-                  <Stat label="GL Accounts" value={String(liveStats.accounts?.length ?? 0)} />
-                  <Stat label="Vouchers" value={String(liveStats.total_vouchers_count ?? 0)} />
-                  <Stat label="Query Latency" value={`${liveStats.query_latency_ms ?? 0} ms`} />
-                </div>
-              ) : (
-                <div className="loading"><Spinner /> Connecting to live core engine…</div>
-              )}
-            </CardBody>
-          </Card>
-        </section>
-
-        {/* Live Engine Telemetry Band */}
-        <section id="telemetry">
-          <Card className="panel">
-            <CardHeader className="panel-heading">
-              <div>
-                <h2>Live Engine Invariant Status</h2>
-                <p>Values below are queried directly from the active SQLite WAL core ledger.</p>
-              </div>
-              {liveStats?.statements?.balance_sheet?.is_balanced && (
-                <Badge tone="ok"><ShieldCheck size={14} /> Balance Sheet Balanced</Badge>
-              )}
-            </CardHeader>
-            <CardBody>
-              {liveStats ? (
-                <div className="metrics">
-                  <Stat
-                    label="Entity Base Currency"
-                    value={liveStats.statements?.functional_currency || 'USD'}
-                  />
-                  <Stat
-                    label="Total Assets"
-                    value={`$${Number(liveStats.statements?.balance_sheet?.total_assets || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-                  />
-                  <Stat
-                    label="Active FX Rates"
-                    value={String(liveStats.fx_rates?.length ?? 0)}
-                  />
-                  <Stat
-                    label="Trial Balance"
-                    value={liveStats.statements?.trial_balance?.is_balanced ? 'Zero Variance' : 'Review'}
-                  />
-                </div>
-              ) : (
-                <div className="loading"><Spinner /> Loading live telemetry…</div>
-              )}
-            </CardBody>
-          </Card>
-        </section>
-
-        {/* Capabilities Grid */}
-        <section id="capabilities" className="stack">
-          <div>
-            <div className="eyebrow">Modular Architecture</div>
-            <h2>Built with @utkristi/ui and Deterministic Financial Invariants</h2>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-            {CAPABILITIES.map(({ icon: Icon, title, desc }) => (
-              <Card key={title} className="panel">
-                <CardBody className="stack" style={{ gap: 10 }}>
-                  <div className="process-icon"><Icon size={18} /></div>
-                  <h3>{title}</h3>
-                  <p style={{ fontSize: '0.9rem' }}>{desc}</p>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
-        </section>
-      </main>
-
-      <Footer
-        brand={<ClearLedgerLogo size={26} showTagline={false} />}
-        note="ClearLedger Prime Financial OS — Non-Custodial Statutory Accounting, FX & Remittance Infrastructure."
-      />
-    </div>
-  );
+export default function MarketingPage({ path }) {
+  const isHome = path === '/' || path === '/home';
+  const isDoc = path.startsWith('/docs');
+  const product = path === '/product';
+  const [title, summary, features] = pages[path] ?? ['ClearLedger product', 'Follow financial records from intake and posting through reporting.'];
+  return <div className="marketing-shell">
+    <Navbar brand={<a className="brand" href="/"><ClearLedgerLogo /></a>}
+      links={[{ label: 'Product', href: '/product' }, { label: 'Solutions', href: '/solutions' },
+        { label: 'Integrations', href: '/integrations' }, { label: 'Docs', href: '/docs' }]}
+      right={<div className="actions"><ThemeToggle /><Button href="/app" size="sm">Open workspace</Button></div>} />
+    <main className="marketing-main">
+      {isHome ? <Home /> : isDoc ? <Documentation path={path} /> :
+        <div className="stack">
+          <header className="marketing-intro"><h1>{title}</h1><p>{summary}</p></header>
+          {product ? <CapabilityGrid /> : <div className="marketing-grid">{features.map(([name, text, href]) =>
+            <Card className="panel" key={name}><CardBody>
+              <h2>{name}</h2><p>{text}</p>
+              {href && <Button href={href} variant="outline" size="sm">Read more</Button>}
+            </CardBody></Card>
+          )}</div>}
+        </div>}
+    </main>
+    <footer className="marketing-footer"><a className="brand" href="/"><ClearLedgerLogo size={26} /></a>
+      <nav aria-label="Footer">{['/security', '/pricing', '/docs'].map(href => <a href={href} key={href}>{publicRoutes[href]}</a>)}</nav>
+    </footer>
+  </div>;
 }

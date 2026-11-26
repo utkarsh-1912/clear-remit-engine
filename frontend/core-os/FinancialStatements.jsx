@@ -34,8 +34,7 @@ export default function FinancialStatements({ core, onDrillAccount }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">Statutory Reporting</div>
-          <h1>Financial Statements, Cash Flow &amp; AR Aging</h1>
+          <h1>Statements &amp; aging</h1>
           <p>Real-time aggregation over immutable SQLite WAL postings. Click any GL code to inspect its running ledger.</p>
         </div>
         <div className="actions">

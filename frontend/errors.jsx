@@ -8,10 +8,10 @@ export function ErrorPage({ notFound = false, retry, title, description }) {
       <h1>{title ?? (notFound ? 'Page not found' : 'Something went wrong')}</h1>
       <p>{description ?? (notFound
         ? 'Check the address or return to the workspace.'
-        : 'ClearRemit couldn’t load this page. Try again or return to the workspace.')}</p>
+        : 'ClearLedger couldn’t load this page. Try again or return to the workspace.')}</p>
       <div className="actions">
         {retry && <Button onClick={retry}>Try again</Button>}
-        <Button href="/" variant={retry ? 'ghost' : 'solid'}>Back to workspace</Button>
+        <Button href="/app" variant={retry ? 'ghost' : 'solid'}>Back to workspace</Button>
       </div>
     </CardBody>
   </Card>;

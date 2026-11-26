@@ -1,19 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Button, Sidebar, SidebarLink, Spinner, ThemeProvider, ThemeToggle } from '@utkristi/ui';
 import {
-  Badge, Button, Sidebar, SidebarLink, Spinner, ThemeProvider, ThemeToggle,
-} from '@utkristi/ui';
-import {
-  Banknote, BookOpen, FileSpreadsheet, Globe2, Layers3, LogOut, RotateCcw,
-  TrendingUp, Zap,
+  ArrowLeftRight, BookOpen, CircleHelp, FileChartColumn, Globe2, LayoutGrid, ListTree,
+  LogOut, ReceiptText, Upload, WalletCards,
 } from 'lucide-react';
 import '@utkristi/ui/css';
 import './styles.css';
 
-import { ClearLedgerLogo, LedgyMascot } from './brand';
+import { ClearLedgerLogo } from './brand';
 import MarketingPage from './marketing';
+import publicRoutes from './public-routes.json';
 import AuthPage from './auth';
-import { ErrorBoundary } from './errors';
+import { ErrorBoundary, ErrorPage } from './errors';
 import { apiFetch } from './core-os/utils';
 import CommandCenter from './core-os/CommandCenter';
 import VouchersDaybook from './core-os/VouchersDaybook';
@@ -25,28 +24,44 @@ import FinancialStatements from './core-os/FinancialStatements';
 import BulkStreamer from './core-os/BulkStreamer';
 import LedgerModal from './core-os/LedgerModal';
 
-const NAV_TABS = [
-  ['dashboard', 'Command Center', Banknote],
-  ['vouchers', 'Vouchers & Daybook', FileSpreadsheet],
-  ['coa', 'Chart of Accounts', BookOpen],
-  ['fx', 'FX & IAS 21 Reval', Globe2],
-  ['remit', 'Remittance & DTAA', Layers3],
-  ['invest', 'Investment Tax-Lots', TrendingUp],
-  ['statements', 'Statements & Aging', FileSpreadsheet],
-  ['bulk', 'GB Data Streamer', Zap],
+const NAV_GROUPS = [
+  ['Workspace', [
+    ['dashboard', 'Overview', LayoutGrid, CommandCenter],
+  ]],
+  ['Accounting', [
+    ['vouchers', 'Vouchers & daybook', ReceiptText, VouchersDaybook],
+    ['coa', 'Chart of accounts', ListTree, ChartOfAccounts],
+    ['statements', 'Statements & aging', FileChartColumn, FinancialStatements],
+  ]],
+  ['Treasury', [
+    ['fx', 'FX & revaluation', Globe2, FxTreasury],
+    ['remit', 'Remittance & tax', ArrowLeftRight, RemittanceHub],
+    ['invest', 'Investment tax lots', WalletCards, InvestmentTaxLots],
+  ]],
+  ['Data', [
+    ['bulk', 'Bank imports', Upload, BulkStreamer],
+  ]],
 ];
+const tabs = new Map(NAV_GROUPS.flatMap(([, items]) => items).map(([key, ...item]) => [key, item]));
+const mobileQuery = '(max-width: 780px)';
 
-function FinancialOsWorkspace({ onNavigate, user, onUserChange }) {
-  const [tab, setTab] = useState(() => location.hash.slice(1) || 'dashboard');
+function activeTab() {
+  return location.hash.slice(1) || 'dashboard';
+}
+
+function FinancialOsWorkspace({ user, onSignedOut }) {
+  const [tab, setTab] = useState(activeTab);
+  const [mobile, setMobile] = useState(() => matchMedia(mobileQuery).matches);
+  const [mobileCollapsed, setMobileCollapsed] = useState(true);
   const [core, setCore] = useState(null);
   const [error, setError] = useState('');
+  const [signOutError, setSignOutError] = useState('');
   const [drillAccount, setDrillAccount] = useState(null);
 
   async function refreshCore() {
+    setError('');
     try {
-      const data = await apiFetch('/api/core/overview');
-      setCore(data);
-      setError('');
+      setCore(await apiFetch('/api/core/overview'));
     } catch (err) {
       setError(err.message);
     }
@@ -54,150 +69,118 @@ function FinancialOsWorkspace({ onNavigate, user, onUserChange }) {
 
   useEffect(() => {
     refreshCore();
-    function onHash() { setTab(location.hash.slice(1) || 'dashboard'); }
+    const media = matchMedia(mobileQuery);
+    const onResize = () => setMobile(media.matches);
+    function onHash() {
+      setTab(activeTab());
+      setMobileCollapsed(true);
+    }
+    media.addEventListener('change', onResize);
     window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    return () => {
+      media.removeEventListener('change', onResize);
+      window.removeEventListener('hashchange', onHash);
+    };
   }, []);
 
   function selectTab(key) {
-    setTab(key);
     location.hash = key;
+    setMobileCollapsed(true);
+    window.scrollTo(0, 0);
   }
 
-  async function handleResetDemo() {
-    await apiFetch('/api/core/reset-demo', { method: 'POST' });
-    await refreshCore();
+  async function signOut() {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+      onSignedOut();
+    } catch (err) {
+      setSignOutError(err.message);
+    }
   }
 
-  async function handleSignOut() {
-    await apiFetch('/api/auth/logout', { method: 'POST' });
-    onUserChange(null);
-    onNavigate('/auth');
-  }
-
+  const [label, , Module] = tabs.get(tab) ?? [];
   return (
     <div className="workspace-shell">
+      <a className="skip" href="#workspace-content" onClick={event => {
+        event.preventDefault();
+        document.getElementById('workspace-content').focus();
+      }}>Skip to content</a>
       <Sidebar
         className="workspace-sidebar"
-        heading={
-          <a href="/" onClick={e => { e.preventDefault(); onNavigate('/'); }} className="brand">
-            <ClearLedgerLogo size={30} showTagline={false} />
-          </a>
-        }
+        collapsible={mobile}
+        collapsed={mobile && mobileCollapsed}
+        onCollapsedChange={setMobileCollapsed}
+        heading={<a href="/" className="brand"><ClearLedgerLogo size={30} /></a>}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingInline: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <LedgyMascot size={28} />
-            <span style={{ fontSize: '0.78rem', color: 'var(--ut-ink-2)' }}>
-              {user ? user.full_name : 'Evaluator Mode'}
-            </span>
-          </div>
-          <ThemeToggle />
-        </div>
-
-        <nav aria-label="Financial OS modules">
-          {NAV_TABS.map(([key, label, Icon]) => (
-            <SidebarLink
-              key={key}
-              href={`#${key}`}
-              label={label}
-              icon={<Icon size={17} />}
-              aria-current={tab === key ? 'page' : undefined}
-              onClick={e => { e.preventDefault(); selectTab(key); }}
-            />
-          ))}
+        <a href="#dashboard" className="workspace-entity" onClick={event => {
+          event.preventDefault();
+          selectTab('dashboard');
+        }}>
+          <span className="entity-avatar" aria-hidden="true">{user.company_name.slice(0, 2).toUpperCase()}</span>
+          <span><strong>{user.company_name}</strong><small>Financial workspace</small></span>
+        </a>
+        <nav aria-label="Workspace">
+          {NAV_GROUPS.map(([group, items]) => <div className="nav-group" key={group}>
+            <p>{group}</p>
+            {items.map(([key, name, Icon]) => <SidebarLink key={key} href={`#${key}`} label={name}
+              icon={<Icon size={17} strokeWidth={1.65} />} aria-current={tab === key ? 'page' : undefined}
+              onClick={event => { event.preventDefault(); selectTab(key); }} />)}
+          </div>)}
         </nav>
-
-        <div className="sidebar-foot" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          {core && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-              <Badge tone={core.statements.balance_sheet.is_balanced ? 'ok' : 'bad'}>
-                {core.statements.balance_sheet.is_balanced ? 'GL Balanced' : 'Check GL'}
-              </Badge>
-              <span>{core.query_latency_ms} ms</span>
-            </div>
-          )}
-          <div className="actions">
-            <Button variant="ghost" size="sm" onClick={handleResetDemo} iconLeft={<RotateCcw size={13} />}>
-              Reset Ledger
-            </Button>
-            {user ? (
-              <Button variant="ghost" size="sm" onClick={handleSignOut} iconLeft={<LogOut size={13} />}>
-                Sign Out
-              </Button>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={() => onNavigate('/auth')}>
-                Sign In
-              </Button>
-            )}
-          </div>
+        <div className="sidebar-foot">
+          <SidebarLink href="/docs" label="Documentation" icon={<CircleHelp size={17} />} />
         </div>
       </Sidebar>
-
-      <main className="main stack">
-        {error && <div className="error">{error}</div>}
-        {!core ? (
-          <div className="loading"><Spinner /> Loading ClearLedger Prime Core Engine…</div>
-        ) : tab === 'vouchers' ? (
-          <VouchersDaybook core={core} onRefresh={refreshCore} onDrillAccount={setDrillAccount} />
-        ) : tab === 'coa' ? (
-          <ChartOfAccounts core={core} onRefresh={refreshCore} onDrillAccount={setDrillAccount} />
-        ) : tab === 'fx' ? (
-          <FxTreasury core={core} onRefresh={refreshCore} />
-        ) : tab === 'remit' ? (
-          <RemittanceHub onRefresh={refreshCore} />
-        ) : tab === 'invest' ? (
-          <InvestmentTaxLots core={core} onRefresh={refreshCore} />
-        ) : tab === 'statements' ? (
-          <FinancialStatements core={core} onDrillAccount={setDrillAccount} />
-        ) : tab === 'bulk' ? (
-          <BulkStreamer core={core} onRefresh={refreshCore} />
-        ) : (
-          <CommandCenter core={core} onSelectTab={selectTab} onDrillAccount={setDrillAccount} />
-        )}
-      </main>
-
+      <div className="workspace-body">
+        <header className="workspace-bar">
+          <div className="workspace-location"><BookOpen size={16} aria-hidden="true" /><span>{label || 'Page not found'}</span></div>
+          <div className="workspace-tools">
+            <span className="workspace-user">{user.full_name}</span>
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={signOut} iconLeft={<LogOut size={15} />}>Sign out</Button>
+          </div>
+        </header>
+        <main className="main stack" id="workspace-content" tabIndex={-1}>
+          {signOutError && <div className="error" role="alert">{signOutError}</div>}
+          {error && <div className="error workspace-notice" role="alert">
+            <span>{error}</span><Button variant="ghost" onClick={refreshCore}>Retry</Button>
+          </div>}
+          {!Module ? <ErrorPage notFound /> : core ? (
+            <Module core={core} onRefresh={refreshCore} onSelectTab={selectTab} onDrillAccount={setDrillAccount} />
+          ) : !error && <div className="loading" role="status"><Spinner /> Loading workspace</div>}
+        </main>
+      </div>
       <LedgerModal accountCode={drillAccount} onClose={() => setDrillAccount(null)} />
     </div>
   );
 }
 
 function RootRouter() {
-  const [pathname, setPathname] = useState(() => location.pathname);
-  const [user, setUser] = useState(null);
+  const path = location.pathname.replace(/\/+$/, '') || '/';
+  const [session, setSession] = useState(null);
+  const [sessionError, setSessionError] = useState('');
+  const requiresSession = path === '/app' || path === '/auth';
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d?.authenticated) setUser(d.user); })
-      .catch(() => {});
-
-    function onPop() { setPathname(location.pathname); }
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  function navigate(path) {
-    if (path !== pathname) {
-      window.history.pushState({}, '', path);
-      setPathname(path);
-      window.scrollTo(0, 0);
+    if (requiresSession) {
+      apiFetch('/api/auth/me').then(setSession).catch(err => setSessionError(err.message));
     }
-  }
+  }, [requiresSession]);
 
-  if (pathname.startsWith('/auth')) {
-    return <AuthPage onNavigate={navigate} onAuthenticated={setUser} />;
+  if (requiresSession) {
+    if (sessionError) return <ErrorPage description={sessionError} retry={() => location.reload()} />;
+    if (!session) return <div className="loading" role="status"><Spinner /> Checking your session</div>;
+    if (path === '/auth' || !session.user) {
+      return <AuthPage registrationAvailable={session.registration_available} user={session.user} />;
+    }
+    return <FinancialOsWorkspace user={session.user} onSignedOut={() => location.assign('/auth')} />;
   }
-  if (pathname.startsWith('/app')) {
-    return <FinancialOsWorkspace onNavigate={navigate} user={user} onUserChange={setUser} />;
-  }
-  return <MarketingPage onNavigate={navigate} />;
+  if (path === '/' || Object.hasOwn(publicRoutes, path)) return <MarketingPage path={path} />;
+  return <ErrorPage notFound />;
 }
 
 createRoot(document.getElementById('root')).render(
   <ThemeProvider defaultTheme="light">
-    <ErrorBoundary>
-      <RootRouter />
-    </ErrorBoundary>
+    <ErrorBoundary><RootRouter /></ErrorBoundary>
   </ThemeProvider>,
 );

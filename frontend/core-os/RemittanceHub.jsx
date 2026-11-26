@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Badge, Button, Card, CardBody, CardHeader, Field, Input, Select, Spinner, Table } from '@utkristi/ui';
+import React, { useState } from 'react';
+import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, Select, Spinner, Table } from '@utkristi/ui';
 import { apiFetch, fmtUsd } from './utils';
 
 export default function RemittanceHub({ onRefresh }) {
-  const [fmt, setFmt] = useState('iso20022');
+  const [loading, setLoading] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState(() => new Set());
   const [data, setData] = useState(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [postedMsg, setPostedMsg] = useState('');
@@ -16,32 +18,65 @@ export default function RemittanceHub({ onRefresh }) {
   const [withheld, setWithheld] = useState('');
   const [taxAudit, setTaxAudit] = useState(null);
 
-  useEffect(() => {
-    let active = true;
+  async function reconcile(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setError('');
+    setLoading(true);
     setData(null);
-    apiFetch(`/api/sample?fmt=${encodeURIComponent(fmt)}`)
-      .then(res => { if (active) { setData(res); setSelectedIdx(0); } })
-      .catch(err => { if (active) setError(err.message); });
-    return () => { active = false; };
-  }, [fmt]);
+    try {
+      const [statement, invoices, credits, remittance] = await Promise.all(
+        ['statement', 'invoices', 'credits', 'remittance'].map(key => form.get(key)?.text() ?? ''),
+      );
+      setData(await apiFetch('/api/reconcile', {
+        method: 'POST',
+        body: JSON.stringify({
+          statement_format: form.get('format'),
+          statement_content: statement,
+          invoices_csv: invoices,
+          credit_memos_csv: credits,
+          remittance_emails_text: remittance,
+        }),
+      }));
+      setSelectedIdx(0);
+      setPostedMsg('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function downloadExport(key, filename, type) {
+    const url = URL.createObjectURL(new Blob([data.exports[key]], { type }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   async function postProposal(prop) {
     setError('');
+    setPosting(true);
     try {
       const res = await apiFetch('/api/remittance/post-to-ledger', {
         method: 'POST',
         body: JSON.stringify({
           tx_id: prop.tx_id,
-          effective_date: new Date().toISOString().slice(0, 10),
+          effective_date: prop.booking_date,
           customer_name: prop.matched_customer_name,
           explanation_summary: prop.explanation_summary,
           journal_entries: prop.journal_entries,
         }),
       });
+      setPosted(new Set([...posted, prop.tx_id]));
       setPostedMsg(`Posted ${prop.tx_id} as ${res.voucher_number} into Core GL.`);
       await onRefresh();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setPosting(false);
     }
   }
 
@@ -76,26 +111,51 @@ export default function RemittanceHub({ onRefresh }) {
   return (
     <div className="stack">
       <header className="page-heading">
-        <div>
-          <div className="eyebrow">Multi-Rail Reconciliation</div>
-          <h1>Remittance Hub &amp; DTAA Tax Compliance</h1>
-          <p>Parse ISO 20022 XML, SWIFT MT940, and BAI2 feeds, solve short-pays, and commit split receipts directly to the Core GL.</p>
-        </div>
-        <div className="actions">
-          <Select value={fmt} onChange={e => setFmt(e.target.value)}>
-            <option value="iso20022">ISO 20022 XML (camt.053)</option>
-            <option value="mt940">SWIFT MT940</option>
-            <option value="bai2">BAI2 Cash Management</option>
-          </Select>
+        <div><h1>Remittance &amp; tax</h1>
+          <p>Match incoming payments to invoices, review proposed journals, and check treaty withholding.</p>
         </div>
       </header>
 
-      {error && <div className="error">{error}</div>}
-      {postedMsg && <Badge tone="ok">{postedMsg}</Badge>}
-
-      {!data ? (
-        <div className="loading"><Spinner /> Running combinatorial reconciliation engine…</div>
-      ) : (
+      <Card className="panel">
+        <CardHeader className="panel-heading"><div><h2>New reconciliation</h2>
+          <p>Use your bank statement and open invoice register. Credit memos and remittance details are optional.</p>
+        </div></CardHeader>
+        <CardBody>
+          <form onSubmit={reconcile} className="stack">
+            <div className="form-grid">
+              <Field label="Statement format"><Select name="format">
+                <option value="AUTO">Detect automatically</option>
+                <option value="ISO20022_XML">ISO 20022 XML (camt.053)</option>
+                <option value="MT940">SWIFT MT940</option>
+                <option value="BAI2">BAI2</option>
+                <option value="BANK_CSV">Bank CSV</option>
+              </Select></Field>
+              <Field label="Bank statement"><Input type="file" name="statement" accept=".xml,.csv,.sta,.mt940,.bai,.bai2,.txt" required /></Field>
+              <Field label="Open invoices (CSV)"><Input type="file" name="invoices" accept=".csv" required /></Field>
+              <Field label="Credit memos (CSV)"><Input type="file" name="credits" accept=".csv" /></Field>
+              <Field label="Remittance details (TXT)"><Input type="file" name="remittance" accept=".txt" /></Field>
+            </div>
+            <div className="actions"><Button type="submit" disabled={loading || posting} iconLeft={loading ? <Spinner /> : undefined}>Run reconciliation</Button>
+              <Button href="/docs/connectors" variant="ghost">File requirements</Button></div>
+          </form>
+        </CardBody>
+      </Card>
+      {error && <div className="error" role="alert">{error}</div>}
+      {postedMsg && <div role="status"><Badge tone="ok">{postedMsg}</Badge></div>}
+      {data && data.proposals.length === 0 && <EmptyState title="No incoming payments found" />}
+      {data?.proposals.length > 0 && <>
+        <div className="results-bar">
+          <h2>{data.proposals.length} payments to review</h2>
+          <div className="actions">
+            {[
+              ['quickbooks_csv', 'QuickBooks', 'csv'], ['xero_csv', 'Xero', 'csv'],
+              ['netsuite_csv', 'NetSuite', 'csv'], ['tally_xml', 'Tally', 'xml'],
+            ].map(([key, label, ext]) => <Button key={key} size="sm" variant="ghost"
+              onClick={() => downloadExport(key, `${label}-journal.${ext}`, ext === 'xml' ? 'application/xml' : 'text/csv')}>
+              {label} export
+            </Button>)}
+          </div>
+        </div>
         <div className="review-layout">
           <div className="tx-list">
             {data.proposals.map((p, idx) => (
@@ -108,7 +168,7 @@ export default function RemittanceHub({ onRefresh }) {
               >
                 <div className="tx-top">
                   <strong>{p.tx_id} · {p.matched_customer_name}</strong>
-                  <strong>{fmtUsd(p.deposit_amount)}</strong>
+                  <strong>{p.currency} {Number(p.deposit_amount).toLocaleString()}</strong>
                 </div>
                 <div className="tx-bottom">
                   <Badge tone={p.status === 'AUTO_RECONCILED' ? 'ok' : 'warn'}>{p.status}</Badge>
@@ -125,8 +185,10 @@ export default function RemittanceHub({ onRefresh }) {
                   <h2>{prop.tx_id} — {prop.matched_customer_name}</h2>
                   <p>{prop.explanation_summary}</p>
                 </div>
-                <Button onClick={() => postProposal(prop)}>Post Split Receipt to Core GL</Button>
+                <Button disabled={posting || posted.has(prop.tx_id) || prop.currency !== 'USD' || !prop.journal_entries.length}
+                  onClick={() => postProposal(prop)}>{posted.has(prop.tx_id) ? 'Posted' : 'Post receipt'}</Button>
               </CardHeader>
+              {prop.currency !== 'USD' && <CardBody><p>Direct posting supports USD receipts. Review the export for this payment.</p></CardBody>}
               <Table columns={jeCols} rows={prop.journal_entries} getRowKey={r => `${prop.tx_id}-${r.line_number}`} />
               {prop.dispute_notice_draft && (
                 <CardBody>
@@ -137,7 +199,7 @@ export default function RemittanceHub({ onRefresh }) {
             </Card>
           )}
         </div>
-      )}
+      </>}
 
       <Card className="panel">
         <CardHeader className="panel-heading">

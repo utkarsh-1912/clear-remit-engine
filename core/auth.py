@@ -6,7 +6,7 @@ import hmac
 import pathlib
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from core.database import get_connection, DEFAULT_DB_PATH
 
@@ -40,28 +40,17 @@ def init_auth_tables(db_path: Optional[pathlib.Path] = None) -> None:
     conn = get_connection(db_path or DEFAULT_DB_PATH)
     try:
         conn.executescript(AUTH_SCHEMA_SQL)
-        # Seed a default demo CFO account so reviewers can test 1-click sign-in immediately
-        exists = conn.execute("SELECT 1 FROM users WHERE email = ?", ("cfo@clearledger.io",)).fetchone()
-        if not exists:
-            salt = secrets.token_hex(16)
-            pw_hash = _hash_password("Prime2026!", salt)
-            conn.execute(
-                """
-                INSERT INTO users (user_id, email, full_name, company_name, role, password_hash, password_salt, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "USR-DEMO-001",
-                    "cfo@clearledger.io",
-                    "Aarav Mehta (Demo CFO)",
-                    "ClearLedger Global Operations LLC",
-                    "CFO / Controller",
-                    pw_hash,
-                    salt,
-                    datetime.now(timezone.utc).isoformat(),
-                ),
-            )
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", ("USR-DEMO-001",))
+        conn.execute("DELETE FROM users WHERE user_id = ?", ("USR-DEMO-001",))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def registration_available(db_path: Optional[pathlib.Path] = None) -> bool:
+    conn = get_connection(db_path or DEFAULT_DB_PATH)
+    try:
+        return conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
     finally:
         conn.close()
 
@@ -73,14 +62,21 @@ def register_user(
     company_name: str,
     role: str = "Finance Controller",
     db_path: Optional[pathlib.Path] = None,
+    *,
+    owner_only: bool = False,
 ) -> Dict[str, Any]:
     clean_email = email.strip().lower()
     if "@" not in clean_email or len(password) < 6:
         raise ValueError("Valid email and password (min 6 characters) are required.")
 
-    init_auth_tables(db_path)
+    if not full_name.strip() or not company_name.strip():
+        raise ValueError("Name and organization are required.")
+
     conn = get_connection(db_path or DEFAULT_DB_PATH)
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        if owner_only and conn.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            raise ValueError("Workspace setup is already complete.")
         if conn.execute("SELECT 1 FROM users WHERE email = ?", (clean_email,)).fetchone():
             raise ValueError("An account with this email already exists.")
         uid = f"USR-{uuid.uuid4().hex[:8].upper()}"
@@ -113,7 +109,6 @@ def register_user(
 
 def authenticate_user(email: str, password: str, db_path: Optional[pathlib.Path] = None) -> Dict[str, Any]:
     clean_email = email.strip().lower()
-    init_auth_tables(db_path)
     conn = get_connection(db_path or DEFAULT_DB_PATH)
     try:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (clean_email,)).fetchone()
@@ -143,7 +138,6 @@ def authenticate_user(email: str, password: str, db_path: Optional[pathlib.Path]
 def get_session_user(token: Optional[str], db_path: Optional[pathlib.Path] = None) -> Optional[Dict[str, Any]]:
     if not token:
         return None
-    init_auth_tables(db_path)
     conn = get_connection(db_path or DEFAULT_DB_PATH)
     try:
         row = conn.execute(
@@ -151,9 +145,9 @@ def get_session_user(token: Optional[str], db_path: Optional[pathlib.Path] = Non
             SELECT u.user_id, u.email, u.full_name, u.company_name, u.role
             FROM sessions s
             JOIN users u ON u.user_id = s.user_id
-            WHERE s.token = ?
+            WHERE s.token = ? AND s.created_at > ?
             """,
-            (token,),
+            (token, (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()),
         ).fetchone()
         return dict(row) if row else None
     finally:

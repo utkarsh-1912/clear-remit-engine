@@ -52,8 +52,7 @@ export default function ChartOfAccounts({ core, onRefresh, onDrillAccount }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">Ledger Master</div>
-          <h1>Chart of Accounts</h1>
+          <h1>Chart of accounts</h1>
           <p>Define hierarchical accounts, native currencies, and IAS 21 monetary revaluation flags.</p>
         </div>
       </header>

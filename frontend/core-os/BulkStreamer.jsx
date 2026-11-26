@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Input, Stat, Table } from '@utkristi/ui';
-import { Upload, Zap } from 'lucide-react';
+import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Stat, Table } from '@utkristi/ui';
+import { Upload } from 'lucide-react';
 import { apiFetch, fmtInt } from './utils';
 
 export default function BulkStreamer({ core, onRefresh }) {
   const [activeJob, setActiveJob] = useState(null);
-  const [customCount, setCustomCount] = useState('25000');
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const pollRef = useRef(null);
   const fileRef = useRef(null);
@@ -22,13 +22,18 @@ export default function BulkStreamer({ core, onRefresh }) {
           clearInterval(pollRef.current);
           await onRefresh();
         }
-      } catch (_) {}
+      } catch (err) {
+        clearInterval(pollRef.current);
+        setActiveJob(null);
+        setError(err.message);
+      }
     }, 250);
   }
 
   async function handleFileUpload(file) {
     if (!file) return;
     setError('');
+    setUploading(true);
     try {
       const res = await fetch(`/api/bulk/upload-stream?filename=${encodeURIComponent(file.name)}`, {
         method: 'POST',
@@ -36,22 +41,13 @@ export default function BulkStreamer({ core, onRefresh }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Upload failed');
+      setActiveJob({ ...data, progress_pct: 0 });
       startPolling(data.job_id);
     } catch (err) {
       setError(err.message);
-    }
-  }
-
-  async function handleStress(count) {
-    setError('');
-    try {
-      const data = await apiFetch('/api/bulk/stress-test', {
-        method: 'POST',
-        body: JSON.stringify({ num_vouchers: Number(count) }),
-      });
-      startPolling(data.job_id);
-    } catch (err) {
-      setError(err.message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
   }
 
@@ -70,9 +66,8 @@ export default function BulkStreamer({ core, onRefresh }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">High-Throughput Ingestion</div>
-          <h1>GB-Scale Constant-Memory Data Streamer</h1>
-          <p>Stream multi-gigabyte ISO 20022 XML and Bank CSV files directly to SQLite WAL in O(1) RAM.</p>
+          <h1>Bank imports</h1>
+          <p>Upload large ISO 20022 XML or bank CSV files for direct receipt posting.</p>
         </div>
       </header>
 
@@ -80,36 +75,27 @@ export default function BulkStreamer({ core, onRefresh }) {
 
       <div className="form-grid">
         <Card className="panel">
-          <CardHeader className="panel-heading"><div><h2>Stream Multi-GB Statement File</h2></div></CardHeader>
+          <CardHeader className="panel-heading"><div><h2>Upload a bank statement</h2></div></CardHeader>
           <CardBody className="stack" style={{ gap: 14 }}>
+            <p>Uploads post receipts directly to cash and receivables. Use Remittance &amp; tax first if you need to review allocations before posting.</p>
             <input
               ref={fileRef}
               type="file"
-              accept=".xml,.csv,.txt"
-              className="file"
+              accept=".xml,.csv"
+              hidden
               onChange={e => handleFileUpload(e.target.files?.[0])}
             />
             <div className="actions">
-              <Button onClick={() => fileRef.current?.click()} iconLeft={<Upload size={15} />}>
-                Select XML / CSV File to Stream
+              <Button disabled={uploading || activeJob?.status === 'RUNNING'} onClick={() => fileRef.current?.click()} iconLeft={<Upload size={15} />}>
+                {uploading ? 'Uploading' : 'Select XML or CSV'}
               </Button>
-            </div>
-            <div style={{ paddingTop: 12, borderTop: '1px solid var(--cr-line)' }} className="stack">
-              <Field label="Synthetic Stress Benchmark (Voucher Count)">
-                <div className="actions">
-                  <Input type="number" min={1000} max={500000} value={customCount} onChange={e => setCustomCount(e.target.value)} style={{ width: 140 }} />
-                  <Button variant="ghost" onClick={() => handleStress(customCount)} iconLeft={<Zap size={15} />}>
-                    Run Streaming Benchmark
-                  </Button>
-                </div>
-              </Field>
             </div>
           </CardBody>
         </Card>
 
         <Card className="panel">
           <CardHeader className="panel-heading">
-            <div><h2>Live Stream Telemetry</h2></div>
+            <div><h2>Current import</h2></div>
             <Badge tone={activeJob?.status === 'COMPLETED' ? 'ok' : 'info'}>
               {activeJob ? `${activeJob.status} (${activeJob.progress_pct}%)` : 'IDLE'}
             </Badge>
@@ -125,11 +111,11 @@ export default function BulkStreamer({ core, onRefresh }) {
       </div>
 
       <Card className="panel">
-        <CardHeader className="panel-heading"><div><h2>Streaming Job History</h2></div></CardHeader>
+        <CardHeader className="panel-heading"><div><h2>Import history</h2></div></CardHeader>
         {core.bulk_jobs?.length > 0 ? (
           <Table columns={jobCols} rows={core.bulk_jobs} getRowKey={r => r.job_id} />
         ) : (
-          <CardBody><EmptyState title="No streaming ingestion jobs run yet" /></CardBody>
+          <CardBody><EmptyState title="No bank statements imported yet" /></CardBody>
         )}
       </Card>
     </div>

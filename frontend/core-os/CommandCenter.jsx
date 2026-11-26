@@ -1,9 +1,10 @@
 import React from 'react';
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Stat, Table } from '@utkristi/ui';
-import { Plus, Zap } from 'lucide-react';
-import { fmtInt, fmtNum, fmtUsd } from './utils';
+import { ArrowLeftRight, Plus, Upload } from 'lucide-react';
+import { fmtNum, fmtUsd } from './utils';
 
 export default function CommandCenter({ core, onSelectTab, onDrillAccount }) {
+  const hasActivity = core.total_vouchers_count > 0;
   const st = core.statements;
   const bs = st.balance_sheet;
   const pl = st.profit_and_loss;
@@ -39,33 +40,45 @@ export default function CommandCenter({ core, onSelectTab, onDrillAccount }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">Core Financial OS</div>
-          <h1>Executive Command Center</h1>
-          <p>Live multi-currency balances, cash flows, and verified double-entry invariants.</p>
+          <h1>Financial overview</h1>
+          <p>Review your balances, receivables, and recent postings.</p>
         </div>
         <div className="actions">
-          <Button variant="ghost" onClick={() => onSelectTab('bulk')} iconLeft={<Zap size={15} />}>
-            GB Data Streamer
+          <Button variant="ghost" onClick={() => onSelectTab('bulk')} iconLeft={<Upload size={15} />}>
+            Import statement
           </Button>
           <Button onClick={() => onSelectTab('vouchers')} iconLeft={<Plus size={15} />}>
-            New Voucher
+            New voucher
           </Button>
         </div>
       </header>
 
       <div className="metrics">
-        <Stat label="Total Assets (USD)" value={fmtUsd(bs.total_assets)} />
-        <Stat label="Global Cash & Nostro" value={fmtUsd(totalCash)} />
-        <Stat label="Net Profit (Period)" value={fmtUsd(pl.net_profit)} />
-        <Stat label="Open AR / Vouchers" value={`${fmtUsd(aging.total_open_ar_usd)} · ${fmtInt(core.total_vouchers_count)}`} />
+        <Stat label="Total assets (USD)" value={fmtUsd(bs.total_assets)} />
+        <Stat label="Cash & Nostro" value={fmtUsd(totalCash)} />
+        <Stat label="Net profit" value={fmtUsd(pl.net_profit)} />
+        <Stat label="Open receivables" value={fmtUsd(aging.total_open_ar_usd)} />
       </div>
 
+      {!hasActivity && <section className="stack" aria-labelledby="first-actions">
+        <h2 id="first-actions">Start recording activity</h2>
+        <div className="workflow-grid">
+          {[
+            ['vouchers', Plus, 'Post a voucher', 'Record opening balances or your first journal entry.'],
+            ['remit', ArrowLeftRight, 'Reconcile a payment', 'Match a bank statement against your open invoices.'],
+            ['bulk', Upload, 'Import bank receipts', 'Post receipts from a bank statement file.'],
+          ].map(([key, Icon, title, description]) => <a className="workflow-tile" href={`#${key}`} key={key}>
+            <div className="feature-icon"><Icon size={19} /></div>
+            <div><strong>{title}</strong><p>{description}</p></div>
+          </a>)}
+        </div>
+      </section>}
       <div className="form-grid">
         <Card className="panel">
           <CardHeader className="panel-heading">
             <div>
-              <h2>Multi-Currency Nostro &amp; Bank Cash</h2>
-              <p>Click any GL code to open its running-balance ledger statement.</p>
+              <h2>Bank &amp; Nostro balances</h2>
+              <p>Select an account code to view its ledger.</p>
             </div>
             <Badge tone={bs.is_balanced ? 'ok' : 'bad'}>
               {bs.is_balanced ? 'Balance Sheet Balanced' : 'Check Variance'}
@@ -88,14 +101,13 @@ export default function CommandCenter({ core, onSelectTab, onDrillAccount }) {
         <Card className="panel">
           <CardHeader className="panel-heading">
             <div>
-              <h2>Recent Immutable Vouchers</h2>
-              <p>Query latency: {core.query_latency_ms} ms over SQLite WAL.</p>
+              <h2>Recent vouchers</h2>
             </div>
             <Button variant="ghost" size="sm" onClick={() => onSelectTab('vouchers')}>
               Open Daybook
             </Button>
           </CardHeader>
-          {core.vouchers.length > 0 ? (
+          {hasActivity ? (
             <Table columns={voucherCols} rows={core.vouchers.slice(0, 8)} getRowKey={r => r.voucher_id} />
           ) : (
             <CardBody><EmptyState title="No vouchers posted yet" /></CardBody>

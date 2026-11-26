@@ -3,17 +3,19 @@
 from __future__ import annotations
 import pathlib
 import tempfile
+import json
 import time
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from core.database import init_database, DEFAULT_DB_PATH
-from core.auth import init_auth_tables, register_user, authenticate_user, get_session_user, revoke_session
+from core.auth import init_auth_tables, register_user, authenticate_user, get_session_user, revoke_session, registration_available
 from core.ledger import (
     PostingInput,
     post_voucher,
@@ -29,7 +31,6 @@ from core.fx_engine import list_fx_rates, upsert_fx_rate, post_fx_conversion_con
 from core.investment_accounting import ingest_broker_trades_csv, get_investment_tax_summary
 from core.bulk_engine import (
     launch_streaming_upload_job,
-    launch_stress_benchmark_job,
     get_job_status,
     list_bulk_jobs,
 )
@@ -52,23 +53,41 @@ from engine.tax_treaty import DTAA_TREATY_TABLE, evaluate_withholding_compliance
 
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent
-SAMPLE_DIR = BASE_DIR / "sample_data"
-STATIC_DIR = BASE_DIR / "static"
 DIST_DIR = BASE_DIR / "dist"
 
 # Initialize persistent multi-currency ledger & auth tables on startup
-init_database(DEFAULT_DB_PATH, seed_demo=True)
+init_database(DEFAULT_DB_PATH)
 init_auth_tables(DEFAULT_DB_PATH)
 
 app = FastAPI(
     title="ClearLedger Prime v5.0 — Modular Multi-Currency Financial OS",
     version="5.0.0",
+    docs_url="/api-reference",
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
 if (DIST_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="dist_assets")
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.middleware("http")
+async def protect_workspace_data(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and path not in PUBLIC_API_PATHS:
+        if not await run_in_threadpool(get_session_user, request.cookies.get("cl_session"), db_path=DEFAULT_DB_PATH):
+            return JSONResponse({"detail": "Sign in to access the workspace."}, status_code=401)
+    return await call_next(request)
+
+
+PUBLIC_API_PATHS = {
+    "/api/health", "/api/auth/me", "/api/auth/login",
+    "/api/auth/register", "/api/auth/logout",
+}
+
+
+@app.get("/api/health")
+def health() -> dict:
+    return {"status": "ok"}
+
 
 
 # --- Pydantic Request Schemas ---
@@ -82,13 +101,15 @@ class ReconcileRequest(BaseModel):
     allowed_discount_pcts: Optional[List[float]] = None
     allowed_tds_pcts: Optional[List[float]] = None
     common_wire_fees: Optional[List[float]] = None
+    tax_corridor: Optional[str] = None
+    tax_service_category: Optional[str] = None
 
 
 class TaxAuditRequest(BaseModel):
-    corridor_code: str = "IN-US"
-    service_category: str = "TECHNICAL_SERVICES_FTS"
-    gross_amount: float = 24000.0
-    withheld_amount: float = 2400.0
+    corridor_code: str
+    service_category: str
+    gross_amount: float
+    withheld_amount: float
 
 
 class VoucherLinePayload(BaseModel):
@@ -103,19 +124,19 @@ class VoucherLinePayload(BaseModel):
 
 class CreateVoucherRequest(BaseModel):
     voucher_type: str = "JOURNAL"
-    effective_date: str = "2026-11-10"
+    effective_date: str
     narration: str
     source_ref: Optional[str] = None
     lines: List[VoucherLinePayload]
 
 
 class ReverseVoucherRequest(BaseModel):
-    reversal_date: str = "2026-11-10"
+    reversal_date: str
     reason: str = "Audit Correction"
 
 
 class FxRateUpsertRequest(BaseModel):
-    rate_date: str = "2026-11-10"
+    rate_date: str
     base_currency: str
     spot_rate: float
     buy_rate: Optional[float] = None
@@ -123,7 +144,7 @@ class FxRateUpsertRequest(BaseModel):
 
 
 class FxConvertRequest(BaseModel):
-    effective_date: str = "2026-11-10"
+    effective_date: str
     from_account_code: str = "1011"
     to_account_code: str = "1010"
     from_amount_native: float = 10000.0
@@ -132,15 +153,15 @@ class FxConvertRequest(BaseModel):
 
 
 class Ias21RevalRequest(BaseModel):
-    as_of_date: str = "2026-11-10"
+    as_of_date: str
     commit_voucher: bool = False
     auto_reverse_next_day: bool = False
-    next_period_date: Optional[str] = "2026-11-11"
+    next_period_date: Optional[str] = None
 
 
 class PostProposalToLedgerRequest(BaseModel):
     tx_id: str
-    effective_date: str = "2026-11-10"
+    effective_date: str
     customer_name: str
     explanation_summary: str
     journal_entries: List[Dict[str, Any]]
@@ -175,11 +196,11 @@ def _run_pipeline(req: ReconcileRequest) -> dict:
     tax_audits = {}
     for prop in proposals:
         tds_deds = [d for d in prop.deductions if d.deduction_type == "TAX_WITHHOLDING_TDS"]
-        if tds_deds:
+        if tds_deds and req.tax_corridor and req.tax_service_category:
             tds_total = sum((d.amount for d in tds_deds), Decimal("0.00"))
             audit = evaluate_withholding_compliance(
-                corridor_code="IN-US",
-                service_category="TECHNICAL_SERVICES_FTS",
+                corridor_code=req.tax_corridor,
+                service_category=req.tax_service_category,
                 gross_amount=prop.total_gross_invoices,
                 withheld_amount=tds_total,
             )
@@ -224,26 +245,11 @@ def _run_pipeline(req: ReconcileRequest) -> dict:
 
 # --- UI Entrypoints (React + @utkristi/ui Vite SPA Bundle) ---
 
-def _serve_spa() -> HTMLResponse:
+def _serve_spa(status_code: int = 200) -> HTMLResponse:
     dist_index = DIST_DIR / "index.html"
     if dist_index.exists():
-        return HTMLResponse(dist_index.read_text(encoding="utf-8"))
+        return HTMLResponse(dist_index.read_text(encoding="utf-8"), status_code=status_code)
     return HTMLResponse("<h1>Frontend not built</h1><p>Run <code>npm run build</code> first.</p>", status_code=503)
-
-
-@app.get("/", response_class=HTMLResponse)
-def marketing_landing() -> HTMLResponse:
-    return _serve_spa()
-
-
-@app.get("/auth", response_class=HTMLResponse)
-def auth_page() -> HTMLResponse:
-    return _serve_spa()
-
-
-@app.get("/app", response_class=HTMLResponse)
-def financial_os_app() -> HTMLResponse:
-    return _serve_spa()
 
 
 # --- Authentication API (PBKDF2-SHA256 + HttpOnly Session Cookie) ---
@@ -253,7 +259,6 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: str
     company_name: str
-    role: str = "Finance Controller"
 
 
 class LoginRequest(BaseModel):
@@ -262,27 +267,27 @@ class LoginRequest(BaseModel):
 
 
 @app.post("/api/auth/register")
-def api_register(req: RegisterRequest, response: Response) -> dict:
+def api_register(req: RegisterRequest, response: Response, request: Request) -> dict:
     try:
         res = register_user(
             email=req.email,
             password=req.password,
             full_name=req.full_name,
             company_name=req.company_name,
-            role=req.role,
+            owner_only=True,
             db_path=DEFAULT_DB_PATH,
         )
-        response.set_cookie(key="cl_session", value=res["token"], httponly=True, samesite="lax", max_age=86400 * 7)
+        response.set_cookie(key="cl_session", value=res["token"], httponly=True, secure=request.url.scheme == "https", samesite="lax", max_age=86400 * 7)
         return {"status": "registered", "user": res["user"]}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/auth/login")
-def api_login(req: LoginRequest, response: Response) -> dict:
+def api_login(req: LoginRequest, response: Response, request: Request) -> dict:
     try:
         res = authenticate_user(email=req.email, password=req.password, db_path=DEFAULT_DB_PATH)
-        response.set_cookie(key="cl_session", value=res["token"], httponly=True, samesite="lax", max_age=86400 * 7)
+        response.set_cookie(key="cl_session", value=res["token"], httponly=True, secure=request.url.scheme == "https", samesite="lax", max_age=86400 * 7)
         return {"status": "authenticated", "user": res["user"]}
     except Exception as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
@@ -298,7 +303,7 @@ def api_logout(request: Request, response: Response) -> dict:
 @app.get("/api/auth/me")
 def api_me(request: Request) -> dict:
     user = get_session_user(request.cookies.get("cl_session"), db_path=DEFAULT_DB_PATH)
-    return {"authenticated": user is not None, "user": user}
+    return {"authenticated": user is not None, "user": user, "registration_available": registration_available(DEFAULT_DB_PATH)}
 
 
 # --- Module 1: Core Multi-Currency General Ledger & Statements ---
@@ -357,7 +362,7 @@ def account_ledger_drilldown(account_code: str, limit: int = 200) -> dict:
 
 
 @app.get("/api/core/cashflow-and-aging")
-def cashflow_and_aging_endpoint(as_of_date: str = "2026-11-10") -> dict:
+def cashflow_and_aging_endpoint(as_of_date: str) -> dict:
     return generate_cashflow_and_aging(as_of_date=as_of_date, db_path=DEFAULT_DB_PATH)
 
 
@@ -381,10 +386,6 @@ def get_paginated_vouchers(
 
 
 # --- Module 5: GB-Scale Constant-Memory Streaming Ingestion & Stress Telemetry ---
-
-class StressBenchmarkRequest(BaseModel):
-    num_vouchers: int = 25000
-
 
 @app.post("/api/bulk/upload-stream")
 async def upload_gb_stream(request: Request, filename: str = "statement.csv") -> dict:
@@ -410,13 +411,6 @@ async def upload_gb_stream(request: Request, filename: str = "statement.csv") ->
 
     job_id = launch_streaming_upload_job(tmp_path, safe_name, db_path=DEFAULT_DB_PATH)
     return {"job_id": job_id, "filename": safe_name, "bytes_received": bytes_written, "status": "RUNNING"}
-
-
-@app.post("/api/bulk/stress-test")
-def trigger_stress_benchmark(req: StressBenchmarkRequest) -> dict:
-    clamped = max(1000, min(500000, req.num_vouchers))
-    job_id = launch_stress_benchmark_job(num_vouchers=clamped, db_path=DEFAULT_DB_PATH)
-    return {"job_id": job_id, "num_vouchers": clamped, "status": "RUNNING"}
 
 
 @app.get("/api/bulk/jobs")
@@ -472,14 +466,6 @@ def reverse_core_voucher(voucher_id: str, req: ReverseVoucherRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/core/reset-demo")
-def reset_demo_database() -> dict:
-    if DEFAULT_DB_PATH.exists():
-        DEFAULT_DB_PATH.unlink()
-    init_database(DEFAULT_DB_PATH, seed_demo=True)
-    return {"status": "reset_complete", "overview": get_core_overview()}
-
-
 # --- Module 2: FX Rate Matrix, Contra Conversion & IAS 21 Revaluation ---
 
 @app.post("/api/fx/rate")
@@ -526,37 +512,6 @@ def revalue_ias21(req: Ias21RevalRequest) -> dict:
 
 # --- Module 3: Remittance & Short-Pay Reconciliation Hub (ClearRemit -> Core GL) ---
 
-@app.get("/api/sample")
-def get_sample_benchmark(fmt: str = "iso20022") -> dict:
-    fmt_map = {
-        "iso20022": ("ISO20022_XML", "sample_camt053.xml"),
-        "mt940": ("MT940", "sample_mt940.txt"),
-        "bai2": ("BAI2", "sample_bai2.txt"),
-    }
-    stmt_fmt, filename = fmt_map.get(fmt.lower(), ("ISO20022_XML", "sample_camt053.xml"))
-    stmt_text = (SAMPLE_DIR / filename).read_text(encoding="utf-8")
-    inv_csv = (SAMPLE_DIR / "open_invoices.csv").read_text(encoding="utf-8")
-    cm_csv = (SAMPLE_DIR / "credit_memos.csv").read_text(encoding="utf-8")
-    emails_txt = (SAMPLE_DIR / "sample_remittance_emails.txt").read_text(encoding="utf-8")
-
-    req = ReconcileRequest(
-        statement_format=stmt_fmt,
-        statement_content=stmt_text,
-        invoices_csv=inv_csv,
-        credit_memos_csv=cm_csv,
-        remittance_emails_text="",
-    )
-    res = _run_pipeline(req)
-    res["raw_inputs"] = {
-        "statement_format": stmt_fmt,
-        "statement_content": stmt_text,
-        "invoices_csv": inv_csv,
-        "credit_memos_csv": cm_csv,
-        "sample_remittance_emails": emails_txt,
-    }
-    return res
-
-
 @app.post("/api/reconcile")
 def reconcile_custom(req: ReconcileRequest) -> dict:
     return _run_pipeline(req)
@@ -601,33 +556,7 @@ def run_tax_audit(req: TaxAuditRequest) -> dict:
     return res.to_dict()
 
 
-@app.get("/api/export/{erp_format}", response_class=PlainTextResponse)
-def download_sample_export(erp_format: str) -> PlainTextResponse:
-    sample = get_sample_benchmark()
-    exports = sample["exports"]
-    key_map = {
-        "quickbooks": ("quickbooks_csv", "text/csv", "quickbooks_journal_import.csv"),
-        "xero": ("xero_csv", "text/csv", "xero_manual_journal.csv"),
-        "netsuite": ("netsuite_csv", "text/csv", "netsuite_journal_import.csv"),
-        "tally": ("tally_xml", "application/xml", "tally_prime_vouchers.xml"),
-    }
-    if erp_format.lower() not in key_map:
-        raise HTTPException(status_code=404, detail="Unsupported ERP format")
-    key, media_type, filename = key_map[erp_format.lower()]
-    return PlainTextResponse(
-        content=exports[key],
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 # --- Module 4: Post-Trade Investment Tax-Lot Accounting ---
-
-@app.get("/api/investments/sample-csv")
-def get_sample_broker_csv() -> dict:
-    csv_text = (SAMPLE_DIR / "sample_broker_trades.csv").read_text(encoding="utf-8")
-    return {"csv_content": csv_text}
-
 
 @app.post("/api/investments/ingest")
 def ingest_broker_trades(req: BrokerTradesIngestRequest) -> dict:
@@ -639,3 +568,14 @@ def ingest_broker_trades(req: BrokerTradesIngestRequest) -> dict:
         }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+PUBLIC_PAGES = json.loads((BASE_DIR / "frontend/public-routes.json").read_text(encoding="utf-8"))
+
+
+@app.get("/{path:path}", response_class=HTMLResponse, include_in_schema=False)
+def serve_page(path: str) -> HTMLResponse:
+    normalized = "/" + path.rstrip("/")
+    if normalized.startswith(("/api/", "/assets/")) or normalized == "/api":
+        raise HTTPException(status_code=404, detail="Not found")
+    return _serve_spa(200 if normalized in {"/", "/app", "/auth", *PUBLIC_PAGES} else 404)

@@ -101,8 +101,7 @@ export default function FxTreasury({ core, onRefresh }) {
     <div className="stack">
       <header className="page-heading">
         <div>
-          <div className="eyebrow">Treasury &amp; IAS 21</div>
-          <h1>FX Rate Matrix &amp; Revaluation Desk</h1>
+          <h1>FX &amp; revaluation</h1>
           <p>Convert foreign Nostro balances with realized FX tracking and run IAS 21 period-end monetary revaluation.</p>
         </div>
         <div className="actions">
