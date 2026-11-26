@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none" role="img" aria-label="Ledgy — ClearLedger Prime Auditor Owl Mascot">
+  <defs>
+    <linearGradient id="bodyGrad" x1="40" y1="30" x2="200" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="30" y1="20" x2="210" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Ambient Glow Halo -->
+  <circle cx="120" cy="120" r="108" fill="url(#halo)"/>
+
+  <!-- Owl Ear Tufts -->
+  <path d="M58 68L44 34L84 52Z" fill="#1E293B" stroke="url(#accentGrad)" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M182 68L196 34L156 52Z" fill="#1E293B" stroke="url(#accentGrad)" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Main Rounded Body -->
+  <rect x="48" y="48" width="144" height="150" rx="68" fill="url(#bodyGrad)" stroke="url(#accentGrad)" stroke-width="3"/>
+
+  <!-- Belly Ledger Shield -->
+  <path d="M84 146C84 134 98 128 120 128C142 128 156 134 156 146V168C156 184 138 194 120 194C102 194 84 184 84 168V146Z" fill="#0B1222" stroke="#334155" stroke-width="2"/>
+  <!-- Mini Balanced Dr/Cr Bars on Chest -->
+  <rect x="98" y="148" width="26" height="6" rx="3" fill="#38BDF8"/>
+  <rect x="116" y="160" width="26" height="6" rx="3" fill="#10B981"/>
+  <rect x="104" y="172" width="32" height="4" rx="2" fill="#64748B"/>
+
+  <!-- Analytical Cyan Spectacles -->
+  <circle cx="92" cy="96" r="24" fill="#060B16" stroke="#38BDF8" stroke-width="3.5"/>
+  <circle cx="148" cy="96" r="24" fill="#060B16" stroke="#10B981" stroke-width="3.5"/>
+  <line x1="116" y1="96" x2="124" y2="96" stroke="#94A3B8" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- Glowing Eyes -->
+  <circle cx="92" cy="96" r="10" fill="#38BDF8"/>
+  <circle cx="95" cy="92" r="3.5" fill="#F8FAFC"/>
+  <circle cx="148" cy="96" r="10" fill="#10B981"/>
+  <circle cx="151" cy="92" r="3.5" fill="#F8FAFC"/>
+
+  <!-- Golden Precision Beak -->
+  <path d="M112 110L128 110L120 124Z" fill="#F59E0B"/>
+
+  <!-- Wings -->
+  <path d="M48 116C30 124 26 154 46 172C52 162 54 146 54 130Z" fill="#16223A" stroke="#38BDF8" stroke-width="2"/>
+  <path d="M192 116C210 124 214 154 194 172C188 162 186 146 186 130Z" fill="#16223A" stroke="#10B981" stroke-width="2"/>
+
+  <!-- Floating Verified Check Badge -->
+  <circle cx="188" cy="64" r="16" fill="#064E3B" stroke="#10B981" stroke-width="2.5"/>
+  <path d="M181 64L186 69L196 58" stroke="#34D399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

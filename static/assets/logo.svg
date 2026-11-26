@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" fill="none" role="img" aria-label="ClearLedger Prime Logo">
+  <defs>
+    <linearGradient id="clGrad" x1="4" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="55%" stop-color="#0EA5E9"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="clGlow" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.08"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer Obsidian Hex Shield -->
+  <rect x="4" y="6" width="52" height="52" rx="14" fill="#0B1222" stroke="url(#clGrad)" stroke-width="2.2"/>
+  <rect x="9" y="11" width="42" height="42" rx="10" fill="url(#clGlow)"/>
+  <!-- Double-Entry Balanced Ledger Bars (Dr == Cr) -->
+  <path d="M20 22H36C38.2 22 40 23.8 40 26V26C40 28.2 38.2 30 36 30H20V22Z" fill="#38BDF8"/>
+  <path d="M24 34H44V42H24C21.8 42 20 40.2 20 38V38C20 35.8 21.8 34 24 34Z" fill="#10B981"/>
+  <!-- Center Precision Fulcrum Dot -->
+  <circle cx="32" cy="32" r="3" fill="#F8FAFC"/>
+  <!-- Wordmark -->
+  <text x="68" y="31" font-family="Inter, -apple-system, Segoe UI, sans-serif" font-size="20" font-weight="800" letter-spacing="-0.03em" fill="#F8FAFC">ClearLedger</text>
+  <text x="68" y="48" font-family="JetBrains Mono, Consolas, monospace" font-size="10.5" font-weight="700" letter-spacing="0.16em" fill="#38BDF8">PRIME FINANCIAL OS</text>
+</svg>

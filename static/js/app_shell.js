@@ -116,5 +116,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   store.subscribe(() => renderActiveView());
+
+  // Check current session user & update sidebar profile chip
+  try {
+    const me = await apiJson('/api/auth/me');
+    if (me.authenticated && me.user) {
+      document.getElementById('userDisplayName').textContent = me.user.full_name;
+      const authLink = document.getElementById('authActionLink');
+      authLink.textContent = 'Sign Out';
+      authLink.href = '#';
+      authLink.addEventListener('click', async e => {
+        e.preventDefault();
+        await apiJson('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/auth';
+      });
+    }
+  } catch (_) {}
+
   await refreshCore();
 });

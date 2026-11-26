@@ -6,6 +6,7 @@ import unittest
 from decimal import Decimal
 
 from core.database import init_database
+from core.auth import init_auth_tables, register_user, authenticate_user, get_session_user, revoke_session
 from core.ledger import PostingInput, post_voucher, reverse_voucher
 from core.reports import generate_financial_statements
 from core.coa_manager import create_gl_account, get_account_ledger_statement
@@ -147,6 +148,19 @@ class TestClearLedgerPrimeInvariants(unittest.TestCase):
         cfa = generate_cashflow_and_aging("2026-11-10", db_path=self.db_path)
         self.assertGreater(cfa["cash_flow_statement"]["financing_activities"], 350000.0)
         self.assertGreater(cfa["ar_aging"]["total_open_ar_usd"], 130000.0)
+
+    def test_auth_registration_login_and_session_lifecycle(self):
+        init_auth_tables(self.db_path)
+        # Verify seeded Demo CFO account authenticates cleanly
+        demo_res = authenticate_user("cfo@clearledger.io", "Prime2026!", db_path=self.db_path)
+        self.assertEqual(demo_res["user"]["email"], "cfo@clearledger.io")
+        self.assertIsNotNone(get_session_user(demo_res["token"], db_path=self.db_path))
+
+        # Register new user and verify session + logout revocation
+        reg = register_user("controller@acme.com", "SecurePass99!", "Priya Sharma", "Acme Global", db_path=self.db_path)
+        self.assertEqual(reg["user"]["company_name"], "Acme Global")
+        revoke_session(reg["token"], db_path=self.db_path)
+        self.assertIsNone(get_session_user(reg["token"], db_path=self.db_path))
 
 
 if __name__ == "__main__":

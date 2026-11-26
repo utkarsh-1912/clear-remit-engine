@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — ClearLedger Prime Financial OS</title>
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <style>
+    body { display: grid; grid-template-columns: 1.05fr 0.95fr; min-height: 100vh; }
+    @media (max-width: 900px) { body { grid-template-columns: 1fr; } .auth-brand-side { display: none; } }
+    .auth-brand-side {
+      background: radial-gradient(circle at 30% 30%, rgba(56,189,248,0.16), transparent 55%),
+                  linear-gradient(180deg, #070d1b 0%, #04070f 100%);
+      border-right: 1px solid var(--border);
+      padding: 48px 54px; display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .auth-form-side {
+      display: flex; align-items: center; justify-content: center; padding: 36px 24px;
+    }
+    .auth-card {
+      width: 430px; max-width: 100%;
+      background: var(--glass); border: 1px solid var(--border); border-radius: 16px;
+      padding: 32px; backdrop-filter: blur(14px); box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+    }
+    .tab-switch {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+      background: rgba(6,10,20,0.85); padding: 5px; border-radius: 10px;
+      border: 1px solid var(--border); margin: 18px 0 22px;
+    }
+    .tab-switch button { background: transparent; border: none; color: var(--muted); padding: 9px; border-radius: 7px; }
+    .tab-switch button.active { background: var(--cyan-dark); color: #fff; }
+    .auth-field { margin-bottom: 14px; }
+    .auth-field label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+    .auth-field input { width: 100%; padding: 10px 12px; font-size: 13px; }
+    .msg-box { padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
+    .msg-err { background: rgba(244,63,94,0.14); border: 1px solid rgba(244,63,94,0.45); color: #fda4af; }
+    .msg-ok { background: rgba(16,185,129,0.14); border: 1px solid rgba(16,185,129,0.45); color: #34d399; }
+    .trust-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #cbd5e1; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <section class="auth-brand-side">
+    <div>
+      <a href="/"><img src="/static/assets/logo.svg" alt="ClearLedger Prime" style="height:42px;" /></a>
+    </div>
+
+    <div style="text-align:center; padding: 20px 0;">
+      <img src="/static/assets/mascot.svg" alt="Ledgy Mascot" style="width:210px; height:210px; margin-bottom:16px;" />
+      <h2 style="font-size:24px; font-weight:800; letter-spacing:-0.02em; margin-bottom:10px;">
+        Zero-Variance Financial Control.
+      </h2>
+      <p style="font-size:13.5px; color:var(--muted); max-width:420px; margin:0 auto;">
+        Ledgy guards every posting line in your Multi-Currency General Ledger, IAS 21 FX Revaluation, and ISO 20022 Remittance streams.
+      </p>
+    </div>
+
+    <div>
+      <div class="trust-item"><span class="pill p-green">✓</span> PBKDF2-HMAC-SHA256 Salted Authentication + HttpOnly Sessions</div>
+      <div class="trust-item"><span class="pill p-cyan">✓</span> Append-Only Immutable Double-Entry Audit Trail</div>
+      <div class="trust-item"><span class="pill p-violet">✓</span> 100% Non-Custodial • Zero Balance-Sheet Exposure</div>
+    </div>
+  </section>
+
+  <section class="auth-form-side">
+    <div class="auth-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1 style="font-size:20px; font-weight:800;" id="authHeading">Sign In to Workspace</h1>
+        <a href="/" style="font-size:12px; color:var(--muted); text-decoration:none;">← Home</a>
+      </div>
+
+      <div class="tab-switch">
+        <button id="btnModeLogin" class="active" onclick="setMode('login')">Sign In</button>
+        <button id="btnModeReg" onclick="setMode('register')">Create Account</button>
+      </div>
+
+      <div id="authMsg" class="msg-box hidden"></div>
+
+      <form id="authForm">
+        <div id="regFields" class="hidden">
+          <div class="auth-field">
+            <label>Full Name</label>
+            <input id="fName" placeholder="e.g. Priya Sharma" />
+          </div>
+          <div class="auth-field">
+            <label>Entity / Company Name</label>
+            <input id="fCompany" placeholder="e.g. Global Trade Holdings LLC" />
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label>Work Email</label>
+          <input id="fEmail" type="email" required value="cfo@clearledger.io" placeholder="you@company.com" />
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <input id="fPass" type="password" required value="Prime2026!" placeholder="••••••••" />
+        </div>
+
+        <button type="submit" class="primary" style="width:100%; padding:11px; font-size:13.5px; margin-top:4px;" id="submitAuthBtn">
+          Sign In to ClearLedger Prime →
+        </button>
+      </form>
+
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+        <button class="emerald" style="width:100%; padding:9px;" onclick="demoQuickLogin()">
+          ⚡ 1-Click Demo CFO Sign-In (cfo@clearledger.io)
+        </button>
+        <a href="/app" style="text-align:center; font-size:12px; color:var(--muted); text-decoration:none; margin-top:4px;">
+          Continue as Guest Evaluator →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    let mode = 'login';
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('btnModeLogin').classList.toggle('active', m === 'login');
+      document.getElementById('btnModeReg').classList.toggle('active', m === 'register');
+      document.getElementById('regFields').classList.toggle('hidden', m === 'login');
+      document.getElementById('authHeading').textContent = m === 'login' ? 'Sign In to Workspace' : 'Create Financial OS Account';
+      document.getElementById('submitAuthBtn').textContent = m === 'login' ? 'Sign In to ClearLedger Prime →' : 'Create Account & Launch OS →';
+      if (m === 'register') {
+        document.getElementById('fEmail').value = '';
+        document.getElementById('fPass').value = '';
+      } else {
+        document.getElementById('fEmail').value = 'cfo@clearledger.io';
+        document.getElementById('fPass').value = 'Prime2026!';
+      }
+      document.getElementById('authMsg').classList.add('hidden');
+    }
+
+    function showMsg(text, isErr = false) {
+      const el = document.getElementById('authMsg');
+      el.textContent = text;
+      el.className = 'msg-box ' + (isErr ? 'msg-err' : 'msg-ok');
+    }
+
+    async function doAuth(url, payload) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showMsg(data.detail || 'Authentication failed', true);
+        return;
+      }
+      showMsg(`Welcome, ${data.user.full_name}! Redirecting to Financial OS...`, false);
+      setTimeout(() => { window.location.href = '/app'; }, 450);
+    }
+
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (mode === 'login') {
+        await doAuth('/api/auth/login', {
+          email: document.getElementById('fEmail').value,
+          password: document.getElementById('fPass').value,
+        });
+      } else {
+        await doAuth('/api/auth/register', {
+          full_name: document.getElementById('fName').value || 'Finance Controller',
+          company_name: document.getElementById('fCompany').value || 'My Enterprise LLC',
+          email: document.getElementById('fEmail').value,
+          password: document.getElementById('fPass').value,
+        });
+      }
+    });
+
+    async function demoQuickLogin() {
+      await doAuth('/api/auth/login', { email: 'cfo@clearledger.io', password: 'Prime2026!' });
+    }
+  </script>
+</body>
+</html>

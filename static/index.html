@@ -10,11 +10,19 @@
   <aside>
     <div class="brand">
       <div class="brand-top">
-        <span class="brand-tag">v5.0 MODULAR OS</span>
+        <a href="/"><img src="/static/assets/logo.svg" alt="ClearLedger Prime" style="height:34px;" /></a>
         <span class="kbd" id="cmdTriggerBtn" style="cursor:pointer">Ctrl+K</span>
       </div>
-      <h1>ClearLedger Prime</h1>
-      <p>Tally + Finacle Core • GB-Scale Engine</p>
+      <div style="display:flex; align-items:center; gap:8px; margin-top:8px; padding:6px 8px; background:rgba(56,189,248,0.06); border:1px solid var(--border); border-radius:8px;">
+        <img src="/static/assets/mascot.svg" alt="Ledgy" style="width:28px; height:28px;" />
+        <div style="font-size:11px; line-height:1.3; overflow:hidden;">
+          <div id="userDisplayName" style="font-weight:700; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Guest Evaluator</div>
+          <div style="display:flex; gap:8px; font-size:10px;">
+            <a href="/auth" id="authActionLink" style="color:var(--cyan); text-decoration:none;">Sign In</a>
+            <a href="/" style="color:var(--muted); text-decoration:none;">Home</a>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="nav-group-label">Core Accounting</div>

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClearLedger Prime — Multi-Currency Core Accounting, FX, Remittance &amp; Tax OS</title>
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <style>
+    body { display: block; overflow-x: hidden; }
+    .nav-bar {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(5, 9, 19, 0.86); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 36px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .nav-links { display: flex; gap: 24px; align-items: center; font-size: 13px; color: var(--muted); }
+    .nav-links a { color: var(--muted); text-decoration: none; font-weight: 600; transition: color 0.15s; }
+    .nav-links a:hover { color: #fff; }
+    .wrap { max-width: 1220px; margin: 0 auto; padding: 0 28px; }
+    .hero {
+      padding: 78px 0 64px;
+      display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center;
+    }
+    @media (max-width: 960px) { .hero { grid-template-columns: 1fr; text-align: center; } .hero-ctas { justify-content: center; } }
+    .hero h1 {
+      font-size: 46px; line-height: 1.1; font-weight: 800; letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #ffffff 35%, #38bdf8 75%, #10b981 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin: 16px 0 18px;
+    }
+    .hero p { font-size: 16px; color: var(--muted); max-width: 560px; line-height: 1.65; }
+    .hero-ctas { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+    .btn-lg { padding: 12px 22px; font-size: 14px; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+    .mascot-stage {
+      background: radial-gradient(circle at 50% 45%, rgba(56,189,248,0.16), rgba(13,19,34,0.85) 70%);
+      border: 1px solid var(--border-hi); border-radius: 22px; padding: 34px 28px;
+      text-align: center; position: relative; box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+    }
+    .mascot-img { width: 220px; height: 220px; animation: float 4.5s ease-in-out infinite; }
+    @keyframes float { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+    .stat-strip {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px;
+    }
+    .stat-chip { background: rgba(7,12,24,0.85); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+    .stat-chip b { display: block; font-family: var(--mono); font-size: 15px; color: var(--cyan); }
+    .stat-chip span { font-size: 10.5px; color: var(--muted); }
+
+    .section { padding: 64px 0; border-top: 1px solid var(--border); }
+    .section-head { text-align: center; max-width: 680px; margin: 0 auto 42px; }
+    .section-head h2 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin-top: 10px; }
+    .section-head p { color: var(--muted); font-size: 14.5px; margin-top: 8px; }
+
+    .feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+    .feat-card {
+      background: var(--glass); border: 1px solid var(--border); border-radius: 14px; padding: 22px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .feat-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+    .feat-icon { font-size: 24px; margin-bottom: 10px; }
+    .feat-card h3 { font-size: 16px; margin-bottom: 6px; }
+    .feat-card p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .price-card { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 26px; display: flex; flex-direction: column; }
+    .price-card.featured { border-color: var(--cyan); background: linear-gradient(180deg, rgba(14,165,233,0.12), rgba(13,19,34,0.92)); }
+    .price-amt { font-family: var(--mono); font-size: 36px; font-weight: 800; margin: 12px 0 6px; }
+    .price-list { list-style: none; margin: 16px 0 24px; font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; }
+    .price-list li::before { content: "✓ "; color: var(--emerald); font-weight: 700; }
+
+    footer { border-top: 1px solid var(--border); padding: 32px 0; color: var(--dim); font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <nav class="nav-bar">
+    <a href="/"><img src="/static/assets/logo.svg" alt="ClearLedger Prime" style="height:38px;" /></a>
+    <div class="nav-links">
+      <a href="#features">Capabilities</a>
+      <a href="#architecture">GB-Scale Engine</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/auth" style="color:var(--cyan);">Sign In</a>
+      <a href="/app" class="primary btn-lg" style="padding:8px 16px; font-size:12.5px;">Launch Live OS →</a>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <section class="hero">
+      <div>
+        <span class="pill p-cyan">TALLY PRIME + FINACLE DNA • ZERO-FLOAT ARCHITECTURE</span>
+        <h1>The Unified Core OS for Multi-Currency Accounting, FX &amp; Remittance.</h1>
+        <p>
+          Replace fragile spreadsheets and fragmented legacy ERPs. ClearLedger Prime unifies an
+          <b>immutable double-entry general ledger</b>, <b>IAS 21 FX revaluation</b>,
+          <b>ISO 20022 / MT940 / BAI2 short-pay reconciliation</b>, and <b>post-trade FIFO investment tax-lot accounting</b>—engineered to stream gigabytes of financial data in constant memory.
+        </p>
+        <div class="hero-ctas">
+          <a href="/app" class="primary btn-lg">Launch Instant Demo OS →</a>
+          <a href="/auth" class="btn-lg" style="border:1px solid var(--border); background:var(--glass); color:#fff;">Create Free Workspace</a>
+        </div>
+      </div>
+
+      <div class="mascot-stage">
+        <img src="/static/assets/mascot.svg" alt="Ledgy — ClearLedger Prime Auditor Owl" class="mascot-img" />
+        <div style="margin-top:8px;">
+          <span class="pill p-green">Meet Ledgy — Your 24/7 Zero-Variance Auditor</span>
+        </div>
+        <div class="stat-strip">
+          <div class="stat-chip"><b>38k+/s</b><span>GL Lines Streamed</span></div>
+          <div class="stat-chip"><b>&lt;15 ms</b><span>Paginated Daybook</span></div>
+          <div class="stat-chip"><b>$0.00</b><span>Ledger Drift</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="section-head">
+        <span class="pill p-violet">8 MODULAR FINANCIAL ENGINES</span>
+        <h2>Built for Controllers, Global CFOs &amp; CPA Firms</h2>
+        <p>Zero-custody, zero-license software infrastructure engineered with strict accounting invariants.</p>
+      </div>
+      <div class="feat-grid">
+        <div class="feat-card">
+          <div class="feat-icon">📒</div>
+          <h3>Immutable Multi-Currency Core GL</h3>
+          <p>Integer minor-unit precision (zero floating-point drift), tri-value currency tracking, Tally-style multi-line vouchers, and instant Account Ledger drill-down.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon">💱</div>
+          <h3>IAS 21 FX &amp; Nostro Treasury Desk</h3>
+          <p>Date-wise spot rate matrix, cross-currency Nostro contra conversions with Realized FX Gain/Loss, and 1-click period-end IAS 21 revaluation with Day-1 auto-reversal.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon">🏦</div>
+          <h3>ISO 20022 / MT940 / BAI2 Remittance Hub</h3>
+          <p>Combinatorial subset-sum solver cracks lump-sum short-pays, early-pay discounts, credit memos, and blind wires down to the penny—with automated dispute drafts.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon">🌐</div>
+          <h3>Cross-Border DTAA Tax Compliance</h3>
+          <p>Audits bilateral withholding tax deductions across IN-US, US-IN, GB-US, DE-US, SG-US, and CA-US treaties, preventing 20%–30% penalty over-withholding.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon">📈</div>
+          <h3>Post-Trade Investment Tax-Lot Ledger</h3>
+          <p>Ingests settled broker contract notes to compute FIFO cost basis, brokerage capitalization, and statutory STCG vs. LTCG schedules synced directly to your Balance Sheet.</p>
+        </div>
+        <div class="feat-card" id="architecture">
+          <div class="feat-icon">⚡</div>
+          <h3>GB-Scale Constant-Memory Streaming</h3>
+          <p>Stream multi-gigabyte ISO 20022 XML and Bank CSV files using O(1) RAM iterparse and 5,000-row atomic SQLite WAL batches with live throughput telemetry.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="pricing">
+      <div class="section-head">
+        <span class="pill p-green">TRANSPARENT SAAS PRICING</span>
+        <h2>Start Free. Scale to Millions of Ledger Lines.</h2>
+      </div>
+      <div class="price-grid">
+        <div class="price-card">
+          <span class="pill p-cyan" style="width:fit-content;">Self-Serve</span>
+          <div class="price-amt">$0<span style="font-size:14px; color:var(--muted)">/mo</span></div>
+          <p style="font-size:12.5px; color:var(--muted);">For solo founders, consultants &amp; evaluation.</p>
+          <ul class="price-list">
+            <li>Full Multi-Currency Core GL &amp; Statements</li>
+            <li>ISO 20022, MT940 &amp; BAI2 Parsing</li>
+            <li>IAS 21 FX Revaluation &amp; FIFO Tax-Lots</li>
+            <li>Tally XML, QuickBooks, Xero &amp; NetSuite Exports</li>
+          </ul>
+          <a href="/auth" class="btn-lg" style="margin-top:auto; justify-content:center; border:1px solid var(--border); color:#fff;">Get Started Free</a>
+        </div>
+
+        <div class="price-card featured">
+          <span class="pill p-green" style="width:fit-content;">Most Popular • Pro Controller</span>
+          <div class="price-amt">$149<span style="font-size:14px; color:var(--muted)">/mo</span></div>
+          <p style="font-size:12.5px; color:var(--muted);">For mid-market B2B distributors &amp; global exporters.</p>
+          <ul class="price-list">
+            <li>Unlimited Multi-GB Streaming Ingestions</li>
+            <li>Automated Short-Pay Dispute Recovery</li>
+            <li>6-Corridor Cross-Border DTAA Tax Engine</li>
+            <li>Direct ERP Sync &amp; Audit-Ready SOX Logs</li>
+          </ul>
+          <a href="/auth" class="primary btn-lg" style="margin-top:auto; justify-content:center;">Start 14-Day Pro Trial</a>
+        </div>
+
+        <div class="price-card">
+          <span class="pill p-violet" style="width:fit-content;">CPA &amp; Multi-Entity Firm</span>
+          <div class="price-amt">$499<span style="font-size:14px; color:var(--muted)">/mo</span></div>
+          <p style="font-size:12.5px; color:var(--muted);">For accounting firms &amp; fractional CFO practices.</p>
+          <ul class="price-list">
+            <li>Unlimited Client Entities &amp; Consolidation</li>
+            <li>Dedicated PostgreSQL / On-Prem Deployment</li>
+            <li>Custom Statutory &amp; GST/TDS Tax Rules</li>
+            <li>Priority Engineering Support</li>
+          </ul>
+          <a href="/auth" class="btn-lg" style="margin-top:auto; justify-content:center; border:1px solid var(--border); color:#fff;">Contact Sales</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <img src="/static/assets/logo.svg" alt="ClearLedger Prime" style="height:28px; opacity:0.85; margin-bottom:10px;" />
+      <div>ClearLedger Prime Financial OS • Non-Custodial Statutory Accounting, FX &amp; Remittance Infrastructure • © 2026</div>
+    </div>
+  </footer>
+</body>
+</html>

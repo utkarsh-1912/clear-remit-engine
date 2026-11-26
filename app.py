@@ -6,13 +6,14 @@ import tempfile
 import time
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from core.database import init_database, DEFAULT_DB_PATH
+from core.auth import init_auth_tables, register_user, authenticate_user, get_session_user, revoke_session
 from core.ledger import (
     PostingInput,
     post_voucher,
@@ -53,16 +54,21 @@ from engine.tax_treaty import DTAA_TREATY_TABLE, evaluate_withholding_compliance
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 SAMPLE_DIR = BASE_DIR / "sample_data"
 STATIC_DIR = BASE_DIR / "static"
+DIST_DIR = BASE_DIR / "dist"
 
-# Initialize persistent multi-currency ledger on startup
+# Initialize persistent multi-currency ledger & auth tables on startup
 init_database(DEFAULT_DB_PATH, seed_demo=True)
+init_auth_tables(DEFAULT_DB_PATH)
 
 app = FastAPI(
     title="ClearLedger Prime v5.0 — Modular Multi-Currency Financial OS",
     version="5.0.0",
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+if (DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="dist_assets")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # --- Pydantic Request Schemas ---
@@ -216,12 +222,83 @@ def _run_pipeline(req: ReconcileRequest) -> dict:
     }
 
 
-# --- UI Entrypoint ---
+# --- UI Entrypoints (React + @utkristi/ui Vite SPA Bundle) ---
+
+def _serve_spa() -> HTMLResponse:
+    dist_index = DIST_DIR / "index.html"
+    if dist_index.exists():
+        return HTMLResponse(dist_index.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Frontend not built</h1><p>Run <code>npm run build</code> first.</p>", status_code=503)
+
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
-    html_path = STATIC_DIR / "index.html"
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+def marketing_landing() -> HTMLResponse:
+    return _serve_spa()
+
+
+@app.get("/auth", response_class=HTMLResponse)
+def auth_page() -> HTMLResponse:
+    return _serve_spa()
+
+
+@app.get("/app", response_class=HTMLResponse)
+def financial_os_app() -> HTMLResponse:
+    return _serve_spa()
+
+
+# --- Authentication API (PBKDF2-SHA256 + HttpOnly Session Cookie) ---
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    company_name: str
+    role: str = "Finance Controller"
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+def api_register(req: RegisterRequest, response: Response) -> dict:
+    try:
+        res = register_user(
+            email=req.email,
+            password=req.password,
+            full_name=req.full_name,
+            company_name=req.company_name,
+            role=req.role,
+            db_path=DEFAULT_DB_PATH,
+        )
+        response.set_cookie(key="cl_session", value=res["token"], httponly=True, samesite="lax", max_age=86400 * 7)
+        return {"status": "registered", "user": res["user"]}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/auth/login")
+def api_login(req: LoginRequest, response: Response) -> dict:
+    try:
+        res = authenticate_user(email=req.email, password=req.password, db_path=DEFAULT_DB_PATH)
+        response.set_cookie(key="cl_session", value=res["token"], httponly=True, samesite="lax", max_age=86400 * 7)
+        return {"status": "authenticated", "user": res["user"]}
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@app.post("/api/auth/logout")
+def api_logout(request: Request, response: Response) -> dict:
+    revoke_session(request.cookies.get("cl_session"), db_path=DEFAULT_DB_PATH)
+    response.delete_cookie("cl_session")
+    return {"status": "logged_out"}
+
+
+@app.get("/api/auth/me")
+def api_me(request: Request) -> dict:
+    user = get_session_user(request.cookies.get("cl_session"), db_path=DEFAULT_DB_PATH)
+    return {"authenticated": user is not None, "user": user}
 
 
 # --- Module 1: Core Multi-Currency General Ledger & Statements ---
