@@ -5,6 +5,9 @@ __pycache__/
 venv/
 .env
 .DS_Store
+clearledger.db
+clearledger.db-*
+
 node_modules/
 dist/
 data/
