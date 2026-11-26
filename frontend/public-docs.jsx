@@ -2,7 +2,7 @@ import React from 'react';
 import { Button, CodeBlock, Sidebar, SidebarLink } from '@utkristi/ui';
 
 const articles = {
-  '/docs/getting-started': ['Getting started', 'Build and run ClearLedger, then set up your ledger.', () => <>
+  '/docs/getting-started': ['Getting started', 'Build and run ClearRemit, then set up your ledger.', () => <>
     <h2>Run the application</h2>
     <p>Install Python 3.12 and Node.js 22.12 or newer. Run the following commands from the repository root.</p>
     <CodeBlock language="bash" code={'python -m pip install -r requirements.txt\nnpm ci\nnpm run build\npython -m uvicorn app:app --host 127.0.0.1 --port 8000'} />
@@ -18,7 +18,7 @@ const articles = {
     <h2>Review the ledger</h2>
     <p>Open Statements &amp; aging to review cash flow, receivables aging, and financial balances. Open the account ledger from the chart of accounts to trace a balance to its vouchers.</p>
   </>],
-  '/docs/connectors': ['File formats', 'Prepare the files ClearLedger reads and writes.', () => <>
+  '/docs/connectors': ['File formats', 'Prepare the files ClearRemit reads and writes.', () => <>
     <h2>Bank statements</h2>
     <p>Reconciliation supports ISO 20022 XML, MT940, BAI2, and bank CSV. The bank CSV takes <code>tx_id</code>, <code>booking_date</code>, <code>payer_name</code>, <code>amount</code>, <code>currency</code>, and optional <code>remittance_info</code>. Use ISO dates and decimal amounts.</p>
     <h2>Open invoices and credit memos</h2>
@@ -38,7 +38,7 @@ const articles = {
       <li><code>POST /api/reconcile</code> accepts a statement and invoice data and returns proposed journals.</li>
       <li><code>POST /api/investments/ingest</code> imports settled broker trades.</li>
     </ul>
-    <div><Button href="/api-reference" variant="outline">Interactive API reference</Button></div>
+    <div><Button href="/api-reference" variant="outlined">Interactive API reference</Button></div>
   </>],
 };
 export default function Documentation({ path }) {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Field, Input, Spinner, ThemeToggle } from '@utkristi/ui';
 import { BookOpen } from 'lucide-react';
-import { ClearLedgerLogo } from './brand';
+import { ClearRemitLogo, ClearRemitMascot } from './brand';
 import { apiFetch } from './core-os/utils';
 
 export default function AuthPage({ registrationAvailable, user }) {
@@ -26,10 +26,11 @@ export default function AuthPage({ registrationAvailable, user }) {
 
   return <div className="auth-layout">
     <section className="auth-context">
-      <a className="brand" href="/"><ClearLedgerLogo /></a>
+      <a className="brand" href="/"><ClearRemitLogo /></a>
       <div className="stack">
         <h2>Accounting and treasury in one workspace.</h2>
         <p>Post to the general ledger, reconcile incoming payments, and review your financial statements.</p>
+        <ClearRemitMascot />
       </div>
       <a href="/docs" className="auth-docs"><BookOpen size={17} /> Read the documentation</a>
     </section>

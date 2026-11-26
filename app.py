@@ -1,4 +1,4 @@
-"""ClearLedger Prime — Unified Tally Prime + Finacle Financial Core OS (FastAPI Backend)."""
+"""ClearRemit — Unified Tally Prime + Finacle Financial Core OS (FastAPI Backend)."""
 
 from __future__ import annotations
 import pathlib
@@ -6,6 +6,7 @@ import tempfile
 import json
 import time
 from decimal import Decimal
+from datetime import date, timedelta
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
@@ -60,7 +61,7 @@ init_database(DEFAULT_DB_PATH)
 init_auth_tables(DEFAULT_DB_PATH)
 
 app = FastAPI(
-    title="ClearLedger Prime v5.0 — Modular Multi-Currency Financial OS",
+    title="ClearRemit v5.0 — Modular Multi-Currency Financial OS",
     version="5.0.0",
     docs_url="/api-reference",
 )
@@ -145,10 +146,10 @@ class FxRateUpsertRequest(BaseModel):
 
 class FxConvertRequest(BaseModel):
     effective_date: str
-    from_account_code: str = "1011"
+    from_account_code: str
     to_account_code: str = "1010"
-    from_amount_native: float = 10000.0
-    execution_rate_to_usd: float = 1.1050
+    from_amount_native: float
+    execution_rate_to_usd: float
     narration: str = "Nostro FX Spot Conversion to USD Operating Bank"
 
 
@@ -499,11 +500,14 @@ def convert_fx_nostro(req: FxConvertRequest) -> dict:
 @app.post("/api/fx/revalue")
 def revalue_ias21(req: Ias21RevalRequest) -> dict:
     try:
+        next_period_date = req.next_period_date
+        if req.auto_reverse_next_day and next_period_date is None:
+            next_period_date = (date.fromisoformat(req.as_of_date) + timedelta(days=1)).isoformat()
         return run_ias21_revaluation(
             as_of_date=req.as_of_date,
             commit_voucher=req.commit_voucher,
             auto_reverse_next_day=req.auto_reverse_next_day,
-            next_period_date=req.next_period_date,
+            next_period_date=next_period_date,
             db_path=DEFAULT_DB_PATH,
         )
     except Exception as exc:

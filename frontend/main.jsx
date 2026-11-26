@@ -8,7 +8,7 @@ import {
 import '@utkristi/ui/css';
 import './styles.css';
 
-import { ClearLedgerLogo } from './brand';
+import { ClearRemitLogo } from './brand';
 import MarketingPage from './marketing';
 import publicRoutes from './public-routes.json';
 import AuthPage from './auth';
@@ -110,7 +110,7 @@ function FinancialOsWorkspace({ user, onSignedOut }) {
         collapsible={mobile}
         collapsed={mobile && mobileCollapsed}
         onCollapsedChange={setMobileCollapsed}
-        heading={<a href="/" className="brand"><ClearLedgerLogo size={30} /></a>}
+        heading={<a href="/" className="brand"><ClearRemitLogo size={30} /></a>}
       >
         <a href="#dashboard" className="workspace-entity" onClick={event => {
           event.preventDefault();

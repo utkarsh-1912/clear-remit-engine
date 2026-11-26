@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button, Card, CardBody, Navbar, ThemeToggle } from '@utkristi/ui';
 import { ArrowDown, ArrowLeftRight, BookOpen, FileChartColumn, Globe2, Layers3, Upload, WalletCards } from 'lucide-react';
-import { ClearLedgerLogo } from './brand';
+import { ClearRemitLogo, ClearRemitMascot } from './brand';
 import Documentation from './public-docs';
 import publicRoutes from './public-routes.json';
 
@@ -15,7 +15,7 @@ const capabilities = [
 ];
 
 const pages = {
-  '/solutions': ['Financial operations by team', 'Explore how controllers, accounting firms, and treasury teams can use ClearLedger.', [
+  '/solutions': ['Financial operations by team', 'Explore how controllers, accounting firms, and treasury teams can use ClearRemit.', [
     ['Finance teams', 'Record day-to-day transactions and review balances before close.', '/solutions/finance'],
     ['Accounting firms', 'Trace client activity from source files to the general ledger.', '/solutions/accounting-firms'],
     ['Enterprise finance', 'Coordinate treasury, receipts, and reporting within one ledger.', '/solutions/enterprise'],
@@ -40,7 +40,7 @@ const pages = {
     ['Supporting records', 'Open invoices and credit memos in CSV, remittance details in TXT, and settled broker trades in CSV.'],
     ['ERP journals', 'Download QuickBooks, Xero, or NetSuite CSV files and Tally XML. Review the journal before importing it into your ERP.'],
   ]],
-  '/pricing': ['Hosting', 'Run ClearLedger on your own infrastructure with a persistent SQLite database.', [
+  '/pricing': ['Hosting', 'Run ClearRemit on your own infrastructure with a persistent SQLite database.', [
     ['Local setup', 'Build the frontend and run FastAPI locally.', '/docs/getting-started'],
     ['Server deployment', 'Use the Docker image with a persistent volume for the ledger.'],
   ]],
@@ -66,9 +66,9 @@ function Home() {
         <div className="marketing-kicker">Accounting & treasury</div>
         <h1>From bank statement to balanced books.</h1>
         <p>Reconcile incoming payments, manage foreign currency, and review your financial statements in one workspace.</p>
-        <div className="actions"><Button href="/app">Open workspace</Button><Button href="/product" variant="outline">Explore the product</Button></div>
+        <div className="actions"><Button href="/app">Open workspace</Button><Button href="/product" variant="outlined">Explore the product</Button></div>
       </div>
-      <div className="workflow-visual" aria-label="How records move through ClearLedger">
+      <div className="workflow-visual" aria-label="How records move through ClearRemit">
         <div className="workflow-title"><Layers3 size={19} /> From intake to reporting</div>
         {[
           [Upload, 'Import', 'Bank statements · invoices · trades'],
@@ -81,7 +81,7 @@ function Home() {
         </React.Fragment>)}
       </div>
     </section>
-    <section className="marketing-section"><h2>What you can do in ClearLedger</h2><CapabilityGrid /></section>
+    <section className="marketing-section"><h2>What you can do in ClearRemit</h2><CapabilityGrid /></section>
   </>;
 }
 
@@ -89,9 +89,9 @@ export default function MarketingPage({ path }) {
   const isHome = path === '/' || path === '/home';
   const isDoc = path.startsWith('/docs');
   const product = path === '/product';
-  const [title, summary, features] = pages[path] ?? ['ClearLedger product', 'Follow financial records from intake and posting through reporting.'];
+  const [title, summary, features] = pages[path] ?? ['ClearRemit product', 'Follow financial records from intake and posting through reporting.'];
   return <div className="marketing-shell">
-    <Navbar brand={<a className="brand" href="/"><ClearLedgerLogo /></a>}
+    <Navbar brand={<a className="brand" href="/"><ClearRemitLogo /></a>}
       links={[{ label: 'Product', href: '/product' }, { label: 'Solutions', href: '/solutions' },
         { label: 'Integrations', href: '/integrations' }, { label: 'Docs', href: '/docs' }]}
       right={<div className="actions"><ThemeToggle /><Button href="/app" size="sm">Open workspace</Button></div>} />
@@ -102,12 +102,13 @@ export default function MarketingPage({ path }) {
           {product ? <CapabilityGrid /> : <div className="marketing-grid">{features.map(([name, text, href]) =>
             <Card className="panel" key={name}><CardBody>
               <h2>{name}</h2><p>{text}</p>
-              {href && <Button href={href} variant="outline" size="sm">Read more</Button>}
+              {href && <Button href={href} variant="outlined" size="sm">Read more</Button>}
             </CardBody></Card>
           )}</div>}
         </div>}
     </main>
-    <footer className="marketing-footer"><a className="brand" href="/"><ClearLedgerLogo size={26} /></a>
+    {isHome && <section className="marketing-brand-band"><ClearRemitMascot /><div className="stack"><h2>Ready to reconcile your first statement?</h2><div className="actions"><Button href="/app">Open workspace</Button><Button href="/docs/workflows" variant="ghost">Read the workflow guide</Button></div></div></section>}
+    <footer className="marketing-footer"><a className="brand" href="/"><ClearRemitLogo size={26} /></a>
       <nav aria-label="Footer">{['/security', '/pricing', '/docs'].map(href => <a href={href} key={href}>{publicRoutes[href]}</a>)}</nav>
     </footer>
   </div>;

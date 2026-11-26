@@ -1,6 +1,6 @@
-# ClearLedger
+# ClearRemit
 
-ClearLedger manages a double-entry ledger, bank reconciliation, FX, broker lots, and financial reporting in one workspace.
+ClearRemit manages a double-entry ledger, bank reconciliation, FX, broker lots, and financial reporting in one workspace.
 
 ## Run locally
 

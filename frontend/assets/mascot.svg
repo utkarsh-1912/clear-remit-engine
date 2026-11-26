@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 290" fill="none">
+  <title>ClearRemit owl</title>
+  <path d="M52 207h256M77 223h206M102 239h156" stroke="#344568" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="180" cy="130" r="106" fill="#17253f" stroke="#334a72" stroke-dasharray="4 7"/>
+  <path d="M64 107h30m-15-15v30M268 162h26m-13-13v26" stroke="#7e92d7" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="278" cy="96" r="5" fill="#9ce8d4"/>
+  <circle cx="91" cy="178" r="4" fill="#aab8fc"/>
+  <path d="M118 169c-13 5-26 15-28 32 24 3 39-4 48-18m104-14c13 5 26 15 28 32-24 3-39-4-48-18" fill="#3e54b6" stroke="#9baafe" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M112 95l-7-29 37 20a92 92 0 0 1 76 0l37-20-7 29c10 20 15 43 13 65-3 44-35 67-81 67s-78-23-81-67c-2-22 3-45 13-65Z" fill="#5267da" stroke="#b2bdfb" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M125 174c14-17 32-24 55-24s41 7 55 24c-5 30-24 48-55 48s-50-18-55-48Z" fill="#3b50b4"/>
+  <path d="M180 113c-18-19-41-23-56-10-18 15-18 48 6 61 19 10 36 0 50-15 14 15 31 25 50 15 24-13 24-46 6-61-15-13-38-9-56 10Z" fill="#eef1ff"/>
+  <circle cx="151" cy="134" r="14" fill="#101a34"/>
+  <circle cx="209" cy="134" r="14" fill="#101a34"/>
+  <circle cx="155" cy="130" r="4" fill="#fff"/>
+  <circle cx="213" cy="130" r="4" fill="#fff"/>
+  <path d="M171 151c4-6 14-6 18 0l-9 12-9-12Z" fill="#f1bd70"/>
+  <path d="M164 189h28l-5-5m5 5-5 5m9 7h-28l5-5m-5 5 5 5" stroke="#abf3df" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M148 226v9m12-7v9m40-9v9m12-11v9" stroke="#f1bd70" stroke-width="4" stroke-linecap="round"/>
+  <path d="M251 172a18 18 0 1 1-36 0 18 18 0 0 1 36 0Z" fill="#163c48" stroke="#91e3cd" stroke-width="2"/>
+  <path d="m226 172 5 5 9-10" stroke="#b3f8e7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

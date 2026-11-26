@@ -1,9 +1,14 @@
 import React from 'react';
-import { Layers3 } from 'lucide-react';
+import mark from './assets/logo.svg';
+import mascot from './assets/mascot.svg';
 
-export function ClearLedgerLogo({ size = 32 }) {
+export function ClearRemitLogo({ size = 32 }) {
   return <span className="brand-lockup">
-    <span className="brand-mark" style={{ width: size, height: size }}><Layers3 size={size * .59} aria-hidden="true" /></span>
-    <strong>ClearLedger</strong>
+    <img className="brand-mark" src={mark} alt="" width={size} height={size} />
+    <strong>ClearRemit</strong>
   </span>;
+}
+
+export function ClearRemitMascot() {
+  return <img className="brand-mascot" src={mascot} alt="ClearRemit owl mascot" width="360" height="290" />;
 }
